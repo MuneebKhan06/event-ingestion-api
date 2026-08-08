@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,10 +22,22 @@ class Settings(BaseSettings):
     postgres_db: str = "events_db"
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    database_url: str = "postgresql+asyncpg://events_user:events_password@localhost:5432/events_db"
+    # Left unset by default and derived from the postgres_* fields above, so there is a
+    # single source of truth for the connection string. Set DATABASE_URL explicitly to
+    # override (e.g. for a managed DB whose URL doesn't decompose into the fields above).
+    database_url: str | None = None
 
     consumer_max_retries: int = 3
     consumer_retry_backoff_base_seconds: float = 1.0
+
+    @model_validator(mode="after")
+    def _derive_database_url(self) -> "Settings":
+        if self.database_url is None:
+            self.database_url = (
+                f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            )
+        return self
 
 
 @lru_cache
