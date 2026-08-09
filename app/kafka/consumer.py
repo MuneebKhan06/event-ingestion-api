@@ -49,6 +49,17 @@ class EventConsumer:
             raise RuntimeError("Consumer has not been started")
         return self._consumer.__aiter__()
 
+    async def get_one(self) -> ConsumerRecord:
+        """Fetch a single message, waiting if none is available yet.
+
+        Unlike iterating directly, this can be raced against another
+        awaitable (e.g. a shutdown signal) via asyncio.wait, so a caller
+        idling on an empty topic can still react immediately.
+        """
+        if self._consumer is None:
+            raise RuntimeError("Consumer has not been started")
+        return await self._consumer.getone()
+
     async def commit(self) -> None:
         if self._consumer is None:
             raise RuntimeError("Consumer has not been started")
