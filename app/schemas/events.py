@@ -38,7 +38,9 @@ class EventCreate(BaseModel):
     @classmethod
     def event_type_must_be_dotted(cls, value: str) -> str:
         if "." not in value:
-            raise ValueError("event_type must be in '<domain>.<action>' format, e.g. 'order.created'")
+            raise ValueError(
+                "event_type must be in '<domain>.<action>' format, e.g. 'order.created'"
+            )
         return value
 
     @field_validator("payload")
@@ -46,7 +48,9 @@ class EventCreate(BaseModel):
     def payload_must_not_be_oversized(cls, value: dict[str, Any]) -> dict[str, Any]:
         size = len(json.dumps(value))
         if size > MAX_PAYLOAD_BYTES:
-            raise ValueError(f"payload is {size} bytes, exceeding the {MAX_PAYLOAD_BYTES} byte limit")
+            raise ValueError(
+                f"payload is {size} bytes, exceeding the {MAX_PAYLOAD_BYTES} byte limit"
+            )
         return value
 
 
