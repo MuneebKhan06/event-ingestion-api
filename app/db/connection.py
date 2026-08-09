@@ -13,3 +13,9 @@ async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
+
+
+async def dispose_engine() -> None:
+    """Close all pooled connections. Call on app shutdown to avoid leaking
+    connections when the process exits (e.g. during a reload or redeploy)."""
+    await engine.dispose()

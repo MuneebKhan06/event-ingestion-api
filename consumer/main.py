@@ -3,7 +3,7 @@ import logging
 
 from app.config import get_settings
 from app.core.dlq import DLQHandler
-from app.db.connection import async_session_factory
+from app.db.connection import async_session_factory, dispose_engine
 from app.db.repository import EventRepository
 from app.kafka.consumer import EventConsumer
 from app.kafka.producer import EventProducer
@@ -35,6 +35,7 @@ async def run() -> None:
     finally:
         await consumer.stop()
         await dlq_producer.stop()
+        await dispose_engine()
         logger.info("Consumer service stopped")
 
 

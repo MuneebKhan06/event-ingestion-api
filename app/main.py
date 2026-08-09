@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app.api.routes import events, health
 from app.config import get_settings
+from app.db.connection import dispose_engine
 from app.kafka.producer import producer as event_producer
 
 settings = get_settings()
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await event_producer.start()
     yield
     await event_producer.stop()
+    await dispose_engine()
 
 
 app = FastAPI(title="Event Ingestion API", lifespan=lifespan)
