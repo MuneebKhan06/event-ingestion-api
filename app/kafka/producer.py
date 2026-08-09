@@ -35,6 +35,10 @@ class EventProducer:
             self._producer = None
             logger.info("Kafka producer stopped")
 
+    @property
+    def is_started(self) -> bool:
+        return self._producer is not None
+
     async def send_event(self, topic: str, event_id: UUID, payload: dict) -> None:
         if self._producer is None:
             raise RuntimeError("Producer has not been started")
