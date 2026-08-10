@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# The consumer imports from app/ (config, db, kafka, core) as well as its
+# own package, so both are needed here.
+COPY app/ ./app/
+COPY consumer/ ./consumer/
+
+RUN useradd --create-home --uid 1000 appuser
+USER appuser
+
+# Exec form (no shell wrapper) so the process is PID 1 and receives
+# SIGTERM directly — that's what consumer/main.py's graceful shutdown
+# handler depends on to finish its in-flight message before exiting.
+CMD ["python", "-m", "consumer.main"]
