@@ -1,11 +1,13 @@
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, create_autospec
 
 import pytest
 from fastapi.testclient import TestClient
 
 import app.api.routes.events as events_module
+import app.api.routes.health as health_module
 import app.main as main_module
 from app.db.connection import get_db_session
 from app.db.models import Event
@@ -95,3 +97,70 @@ def test_get_event_not_found(client):
     response = client.get(f"/events/{uuid.uuid4()}")
 
     assert response.status_code == 404
+
+
+class _FakeEngine:
+    """Stands in for the async SQLAlchemy engine in health checks.
+
+    engine.connect() is used as an async context manager, so this returns
+    itself and either yields a connection or raises to simulate an outage.
+    """
+
+    def __init__(self, reachable: bool):
+        self._reachable = reachable
+
+    def connect(self):
+        return self
+
+    async def __aenter__(self):
+        if not self._reachable:
+            raise RuntimeError("database unreachable")
+        return SimpleNamespace(execute=AsyncMock())
+
+    async def __aexit__(self, *_exc_info):
+        return False
+
+
+def test_health_reports_healthy_when_dependencies_are_up(client, monkeypatch):
+    monkeypatch.setattr(health_module, "engine", _FakeEngine(reachable=True))
+    monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=True))
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "healthy",
+        "kafka": "connected",
+        "database": "connected",
+    }
+
+
+def test_health_returns_503_when_degraded(client, monkeypatch):
+    """A degraded service must fail the status code, not just the body.
+
+    The image's HEALTHCHECK and any load balancer key off the status code
+    alone, so a 200 here would keep traffic flowing to a broken instance.
+    """
+    monkeypatch.setattr(health_module, "engine", _FakeEngine(reachable=False))
+    monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=False))
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["kafka"] == "disconnected"
+    assert body["database"] == "disconnected"
+
+
+def test_health_returns_503_when_only_kafka_is_down(client, monkeypatch):
+    monkeypatch.setattr(health_module, "engine", _FakeEngine(reachable=True))
+    monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=False))
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["kafka"] == "disconnected"
+    assert body["database"] == "connected"

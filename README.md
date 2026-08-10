@@ -447,7 +447,14 @@ Health check endpoint.
 }
 ```
 
-Returns `"status": "degraded"` if either dependency is unreachable.
+**Responses:**
+- `200 OK` — all dependencies reachable
+- `503 Service Unavailable` — Kafka or the database is unreachable; the body
+  reports `"status": "degraded"` and which dependency is down
+
+The status code matters as much as the body: the image's `HEALTHCHECK`, load
+balancers and orchestrator probes all decide on the code alone, so a degraded
+instance has to answer non-2xx to be taken out of rotation.
 
 ---
 
