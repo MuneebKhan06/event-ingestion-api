@@ -1,3 +1,20 @@
+# Defined once and merged into the services below. The credentials in
+# particular are used in two different senses — postgres uses them to
+# initialise the database, the app services to connect to it — so they have to
+# stay identical; sharing one anchor makes that structural instead of a
+# convention someone has to remember.
+x-postgres-credentials: &postgres-credentials
+  POSTGRES_USER: events_user
+  POSTGRES_PASSWORD: events_password
+  POSTGRES_DB: events_db
+
+x-app-env: &app-env
+  <<: *postgres-credentials
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  LOG_LEVEL: INFO
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
@@ -70,9 +87,7 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: events_user
-      POSTGRES_PASSWORD: events_password
-      POSTGRES_DB: events_db
+      <<: *postgres-credentials
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Files here run once on first init, in filename order — so 001_ creates
@@ -99,13 +114,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: events_user
-      POSTGRES_PASSWORD: events_password
-      POSTGRES_DB: events_db
-      LOG_LEVEL: INFO
+      <<: *app-env
     healthcheck:
       test:
         - CMD
@@ -130,14 +139,8 @@ services:
       kafka-init:
         condition: service_completed_successfully
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      <<: *app-env
       KAFKA_CONSUMER_GROUP: event-processors
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: events_user
-      POSTGRES_PASSWORD: events_password
-      POSTGRES_DB: events_db
-      LOG_LEVEL: INFO
     # Give the in-flight message time to finish and commit its offset after
     # SIGTERM before Docker escalates to SIGKILL.
     stop_grace_period: 30s
