@@ -474,8 +474,9 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-14 tests covering schema validation, the Kafka producer, consumer processing and
-DLQ routing, and the API endpoints. They use mocks throughout, so no running
+23 tests covering schema validation, the Kafka producer, consumer processing and
+DLQ routing, the DLQ handler and idempotency check, and the API endpoints
+(including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
 
 For integration work against real infrastructure, `docker-compose.test.yml`

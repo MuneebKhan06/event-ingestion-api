@@ -46,7 +46,8 @@ The FastAPI app, then the standalone consumer service, then tests.
   with exponential backoff, while a malformed payload or bad `event_id` goes
   straight to the DLQ. Retrying a permanently invalid message just delays the
   inevitable and burns throughput.
-- 14 tests, all mock-based, so the suite runs without Kafka or PostgreSQL.
+- Tests are all mock-based, so the suite runs without Kafka or PostgreSQL.
+  (Started at 14 here; later passes took it to 23.)
 
 **Gotcha:** the shell's active Python turned out to be an unrelated project's
 virtualenv (`oracle_to_clickhouse_insertion`), which is where the first few
@@ -108,6 +109,34 @@ of error.
   compose inherits, leaving one definition instead of two. Verified end to end
   against a real build: a container serving `/health` reports `healthy`, and the
   probe exits non-zero when nothing is listening.
+
+---
+
+## Pass 4 — Health semantics and coverage gaps
+
+**Gotcha (real bug):** `/health` reported `"status": "degraded"` in its body but
+still answered `200`. Nothing that consumes the endpoint reads the body — the
+image's `HEALTHCHECK` runs `urlopen`, which only fails on a non-2xx, and load
+balancers and orchestrator probes key off the status code too. So a container
+with Kafka *and* Postgres down reported itself perfectly healthy to Docker. The
+two halves (health endpoint, container healthcheck) were each reasonable on their
+own and only became a bug where they met. It now returns `503` when degraded.
+
+The endpoint had no tests at all, which is why the gap survived that long; it now
+has three (healthy, fully degraded, Kafka-only-down). Confirmed they actually
+catch the bug by reverting the fix and watching them fail with `200 != 503` — a
+test that passes both before and after a fix proves nothing.
+
+Also filled the other untested spot: `app/core/dlq.py` and
+`app/core/idempotency.py` had no direct tests, only indirect exercise through the
+consumer. Six tests now cover DLQ writes going to both Postgres and Kafka, the
+DLQ message keeping the payload and reason intact, the generated-key fallback for
+unparseable payloads (and that the fake key is not recorded as a real
+`event_id`), the Postgres-before-Kafka ordering, and both branches of the
+duplicate check. Verified with a deliberate mutation: deleting the Kafka publish
+makes four of them fail.
+
+Suite: 14 → 23 tests.
 
 ---
 
