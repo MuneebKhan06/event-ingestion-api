@@ -127,6 +127,7 @@ event-ingestion-api/
 |   |-- test_producer.py         # Kafka producer tests
 |   |-- test_consumer.py         # Consumer + DLQ routing tests
 |   |-- test_core.py             # DLQ handler + idempotency check tests
+|   |-- test_connection.py       # Lazy engine construction tests
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
@@ -533,7 +534,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-34 unit tests covering schema validation, the Kafka producer, consumer processing and
+37 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

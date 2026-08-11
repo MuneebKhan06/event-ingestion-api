@@ -9,8 +9,6 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_settings = get_settings()
-
 
 class EventConsumer:
     """Thin async wrapper around AIOKafkaConsumer with manual offset commit.
@@ -21,13 +19,15 @@ class EventConsumer:
 
     def __init__(self, *topics: str, group_id: str | None = None) -> None:
         self._topics = topics
-        self._group_id = group_id or _settings.kafka_consumer_group
+        self._group_id = group_id or get_settings().kafka_consumer_group
         self._consumer: AIOKafkaConsumer | None = None
 
     async def start(self) -> None:
+        # As in the producer: resolved when connecting, not at import.
+        settings = get_settings()
         self._consumer = AIOKafkaConsumer(
             *self._topics,
-            bootstrap_servers=_settings.kafka_bootstrap_servers,
+            bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id=self._group_id,
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             enable_auto_commit=False,

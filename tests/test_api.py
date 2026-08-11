@@ -200,7 +200,7 @@ class _FakeEngine:
 
 
 def test_health_reports_healthy_when_dependencies_are_up(client, monkeypatch):
-    monkeypatch.setattr(health_module, "engine", _FakeEngine(reachable=True))
+    monkeypatch.setattr(health_module, "get_engine", lambda: _FakeEngine(reachable=True))
     monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=True))
 
     response = client.get("/health")
@@ -219,7 +219,7 @@ def test_health_returns_503_when_degraded(client, monkeypatch):
     The image's HEALTHCHECK and any load balancer key off the status code
     alone, so a 200 here would keep traffic flowing to a broken instance.
     """
-    monkeypatch.setattr(health_module, "engine", _FakeEngine(reachable=False))
+    monkeypatch.setattr(health_module, "get_engine", lambda: _FakeEngine(reachable=False))
     monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=False))
 
     response = client.get("/health")
@@ -232,7 +232,7 @@ def test_health_returns_503_when_degraded(client, monkeypatch):
 
 
 def test_health_returns_503_when_only_kafka_is_down(client, monkeypatch):
-    monkeypatch.setattr(health_module, "engine", _FakeEngine(reachable=True))
+    monkeypatch.setattr(health_module, "get_engine", lambda: _FakeEngine(reachable=True))
     monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=False))
 
     response = client.get("/health")

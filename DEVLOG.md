@@ -208,6 +208,41 @@ ignore ruff reports 4 UP017 errors, with py310 and no ignore it reports none.
 
 ---
 
+## Pass 7 — Config resolved at use, not at import
+
+Several modules ran `get_settings()` at import and bound the result to a
+module-level `_settings`. The database engine was the worst case: it was
+constructed at import, so the connection URL was frozen by whatever environment
+existed the moment anything first imported `app.db.connection`. Nothing could
+redirect the application afterwards.
+
+The symptom had already shown up without being named: the integration tests in
+pass 5 had to hardcode their own connection constants for the test stack, because
+pointing the application's own settings at it would have had no effect.
+
+Now `get_engine()` builds on first use, `async_session_factory()` stays callable
+exactly as before so no call site changed, and the Kafka producer and consumer
+read settings when they connect rather than when they load. `dispose_engine()`
+also clears the cached engine, so a later call rebuilds instead of returning an
+engine that has already been disposed.
+
+**Scoped out deliberately:** `app/kafka/topics.py` still resolves its topic names
+at import. Making it lazy would be theatre — its five consumers all use
+`from app.kafka.topics import EVENTS_RAW`, and that form snapshots the value at
+the importing module's import time no matter what the defining module does. It
+would only buy something if every call site switched to attribute access, and
+topic names are deploy-time static anyway. Better an honest untouched module than
+a lazy-looking one that isn't.
+
+Verified against the real stack, not just mocks: all 6 integration tests still
+pass after the change, which is the part that actually exercises the reworked
+Kafka and database wiring.
+
+Suite: 34 → 37 unit tests (the 3 new ones pin the lazy behaviour so it can't
+regress quietly).
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are
