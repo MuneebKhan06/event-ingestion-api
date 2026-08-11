@@ -1,5 +1,7 @@
 # Event Ingestion API with Stream Processing
 
+[![CI](https://github.com/MuneebKhan06/event-ingestion-api/actions/workflows/ci.yml/badge.svg)](https://github.com/MuneebKhan06/event-ingestion-api/actions/workflows/ci.yml)
+
 A production-grade event ingestion system built with FastAPI and Apache Kafka.
 Accepts high-throughput events via REST API, publishes to Kafka topics, and
 processes them through consumers that persist to PostgreSQL with idempotency guarantees.
@@ -71,6 +73,10 @@ Kafka Topic: events.dlq  +  dlq_events table
 
 ```
 event-ingestion-api/
+|
+|-- .github/
+|   |-- workflows/
+|       |-- ci.yml               # Lint + tests on Python 3.10 and 3.11
 |
 |-- app/
 |   |-- __init__.py
@@ -544,6 +550,13 @@ docker-compose -f docker-compose.test.yml up -d
 ```bash
 ruff check app/ consumer/ tests/ load_tests/ scripts/
 ```
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs the lint and test steps above on every push and
+pull request, across Python 3.10 and 3.11. The 3.10 entry is not padding: the
+codebase intentionally avoids 3.11-only idioms (hence the `UP017` ruff ignore),
+and without a 3.10 job that compatibility would quietly rot.
 
 ### Run load tests
 
