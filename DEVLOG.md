@@ -187,6 +187,27 @@ Suite: 34 → 40 tests (6 integration, skipped when the stack is absent).
 
 ---
 
+## Pass 6 — Ruff's target version
+
+Ruff was configured with `target-version = "py311"` while the project supported
+3.10 and, since pass 4, actively tested it in CI. That is not a cosmetic
+mismatch: `target-version` tells ruff which idioms are safe to *recommend*, so it
+was suggesting `datetime.UTC` — 3.11-only — in code that has to run on 3.10. The
+`UP017` ignore added back in pass 2 was suppressing the symptom rather than
+correcting the cause.
+
+The sharp edge is that those suggestions were marked auto-fixable. Anyone running
+`ruff check --fix` would have had the linter rewrite working code into a form
+that fails the 3.10 CI job, while reporting success.
+
+Setting `target-version = "py310"` fixes it at the root, and makes the `UP017`
+ignore dead config — confirmed by removing it and re-running: with py311 and no
+ignore ruff reports 4 UP017 errors, with py310 and no ignore it reports none.
+`ruff check --fix` is now verifiably a no-op. (The `B008` ignore stays: FastAPI's
+`Depends()` in argument defaults is the intended idiom, unrelated to versions.)
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are

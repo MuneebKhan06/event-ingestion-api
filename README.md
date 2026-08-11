@@ -569,8 +569,12 @@ ruff check app/ consumer/ tests/ load_tests/ scripts/
 
 `.github/workflows/ci.yml` runs the lint and test steps above on every push and
 pull request, across Python 3.10 and 3.11. The 3.10 entry is not padding: the
-codebase intentionally avoids 3.11-only idioms (hence the `UP017` ruff ignore),
-and without a 3.10 job that compatibility would quietly rot.
+codebase intentionally avoids 3.11-only idioms, and without a 3.10 job that
+compatibility would quietly rot.
+
+Ruff's `target-version` is pinned to `py310` for the same reason — it is the
+supported floor, not the version development happens on. Pointing it at 3.11
+made ruff offer to rewrite code into 3.11-only forms that the 3.10 job rejects.
 
 ### Run load tests
 
