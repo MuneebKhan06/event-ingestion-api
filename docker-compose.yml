@@ -120,6 +120,7 @@ services:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
+    restart: unless-stopped
     environment:
       <<: *app-env
     # No healthcheck block here on purpose: it's defined in
@@ -138,6 +139,11 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+    # The consumer exits deliberately when the database is unreachable (see
+    # consumer/main.py) rather than skipping messages. That is only a sound
+    # strategy if it comes back, so the restart policy is load-bearing here,
+    # not boilerplate.
+    restart: unless-stopped
     environment:
       <<: *app-env
       KAFKA_CONSUMER_GROUP: event-processors

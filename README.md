@@ -128,6 +128,7 @@ event-ingestion-api/
 |   |-- test_consumer.py         # Consumer + DLQ routing tests
 |   |-- test_core.py             # DLQ handler + idempotency check tests
 |   |-- test_connection.py       # Lazy engine construction tests
+|   |-- test_consumer_loop.py    # Consume-loop offset-commit guarantees
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
@@ -317,6 +318,15 @@ Transient failures (e.g. a brief DB outage) are retried with exponential backoff
 first; only after retries are exhausted does an event go to the DLQ. Permanent
 failures — a malformed payload or an invalid `event_id` — skip retries entirely,
 since retrying them would never succeed.
+
+**When the DLQ itself cannot be written:** the DLQ records to Postgres before
+publishing, so a database outage takes out the fallback as well as the primary
+path. The consumer treats that as unrecoverable for the message in hand: it logs
+the topic, partition and offset, leaves the offset **uncommitted**, and exits so
+the container restarts. Committing would skip the event permanently — an outage
+becoming silent data loss — and continuing would strand it behind a later commit.
+The `restart: unless-stopped` policy on the consumer is what makes exiting a safe
+response rather than a fatal one.
 
 **Replaying failures:** once the underlying bug is fixed, `scripts/replay_dlq.py`
 re-publishes stored failures onto `events.raw` so the normal consumer reprocesses
@@ -534,7 +544,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-37 unit tests covering schema validation, the Kafka producer, consumer processing and
+41 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

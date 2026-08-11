@@ -243,6 +243,41 @@ regress quietly).
 
 ---
 
+## Pass 8 — A database outage could kill the consumer for good
+
+**Gotcha (real bug):** the consume loop had no guard around per-message work, and
+nothing in `docker-compose.yml` set a restart policy. Those two facts combined
+badly.
+
+`process_message` handles bad messages and exhausted retries by routing them to
+the DLQ — but `DLQHandler.send` writes to Postgres *first* (deliberately: a
+durable record before the publish). So when the database is the thing that's
+down, the DLQ fallback fails too. That exception unwound the `while` loop, hit
+the `finally`, stopped the consumer, and the container exited. With no restart
+policy it never came back. A transient outage therefore took the consumer down
+permanently, and the only symptom was a bare traceback with no indication of
+which message was in flight.
+
+Confirmed rather than assumed, by driving `process_message` with a failing
+repository *and* a failing DLQ handler and watching the `RuntimeError` escape.
+
+The fix keeps the failure loud but survivable: catch it, log with
+topic/partition/offset so the message is findable, deliberately do **not** commit
+the offset, and re-raise. Not committing is the important half — committing would
+skip the message permanently, turning an outage into silent data loss. Continuing
+to the next message would be just as bad, since a later commit would strand this
+one. Exiting is only sound because the container now restarts, so
+`restart: unless-stopped` on the consumer is load-bearing rather than boilerplate
+(the API got it too).
+
+Four tests pin this, including the negative guarantee that a failure never
+commits. Checked they have teeth by mutating the `raise` into a fall-through and
+confirming two of them fail.
+
+Suite: 37 → 41 unit tests.
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are

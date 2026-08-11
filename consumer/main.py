@@ -55,10 +55,35 @@ async def run() -> None:
                 logger.info("Shutdown signal received, exiting")
                 break
 
-            async with async_session_factory() as session:
-                repository = EventRepository(session)
-                dlq_handler = DLQHandler(dlq_producer, repository)
-                await process_message(message, repository, dlq_handler)
+            try:
+                async with async_session_factory() as session:
+                    repository = EventRepository(session)
+                    dlq_handler = DLQHandler(dlq_producer, repository)
+                    await process_message(message, repository, dlq_handler)
+            except Exception:
+                # process_message already routes bad messages and exhausted
+                # retries to the DLQ, so reaching here means the DLQ write
+                # failed too — the database is unreachable, not this message
+                # being unprocessable. Two deliberate choices:
+                #
+                #   * don't commit the offset, so the message is redelivered
+                #     instead of silently skipped;
+                #   * re-raise rather than continue, because looping on to the
+                #     next message would eventually commit a later offset and
+                #     strand this one.
+                #
+                # Exiting is only safe because the container restarts (see the
+                # restart policy in docker-compose.yml); without that this
+                # would leave the consumer permanently dead after a transient
+                # outage.
+                logger.exception(
+                    "Unrecoverable failure handling %s[%s]@%s — offset not committed",
+                    message.topic,
+                    message.partition,
+                    message.offset,
+                )
+                raise
+
             # Offset is only committed after the message has been durably
             # handled (inserted or routed to DLQ), never before — including
             # on shutdown: a message already fetched here always finishes
