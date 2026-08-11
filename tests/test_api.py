@@ -99,6 +99,84 @@ def test_get_event_not_found(client):
     assert response.status_code == 404
 
 
+def _fake_event(event_id: uuid.UUID | None = None, event_type: str = "order.created") -> Event:
+    return Event(
+        id=1,
+        event_id=event_id or uuid.uuid4(),
+        event_type=event_type,
+        source="order-service",
+        payload={"order_id": "ORD-001"},
+        status="processed",
+        created_at=datetime.now(timezone.utc),
+        processed_at=None,
+    )
+
+
+def test_list_events_returns_page_and_total(client):
+    client.mock_repository.list_events.return_value = ([_fake_event(), _fake_event()], 57)
+
+    response = client.get("/events?limit=2&offset=10")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 57
+    assert body["limit"] == 2
+    assert body["offset"] == 10
+    assert len(body["events"]) == 2
+
+
+def test_list_events_passes_filters_through(client):
+    client.mock_repository.list_events.return_value = ([], 0)
+
+    response = client.get(
+        "/events",
+        params={
+            "event_type": "user.clicked",
+            "source": "web",
+            "since": "2026-01-01T00:00:00Z",
+            "until": "2026-02-01T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    kwargs = client.mock_repository.list_events.call_args.kwargs
+    assert kwargs["event_type"] == "user.clicked"
+    assert kwargs["source"] == "web"
+    assert kwargs["since"] == datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert kwargs["until"] == datetime(2026, 2, 1, tzinfo=timezone.utc)
+
+
+def test_list_events_defaults_when_no_query_given(client):
+    client.mock_repository.list_events.return_value = ([], 0)
+
+    response = client.get("/events")
+
+    assert response.status_code == 200
+    kwargs = client.mock_repository.list_events.call_args.kwargs
+    assert kwargs == {
+        "event_type": None,
+        "source": None,
+        "since": None,
+        "until": None,
+        "limit": 50,
+        "offset": 0,
+    }
+
+
+def test_list_events_rejects_limit_above_cap(client):
+    """An unbounded limit would let one request pull the whole table."""
+    response = client.get("/events?limit=5000")
+
+    assert response.status_code == 422
+    client.mock_repository.list_events.assert_not_awaited()
+
+
+def test_list_events_rejects_negative_offset(client):
+    response = client.get("/events?offset=-1")
+
+    assert response.status_code == 422
+
+
 class _FakeEngine:
     """Stands in for the async SQLAlchemy engine in health checks.
 

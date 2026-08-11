@@ -78,3 +78,12 @@ class EventResponse(BaseModel):
     processed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class EventListResponse(BaseModel):
+    """A page of events plus enough context to walk through the rest."""
+
+    total: int
+    limit: int
+    offset: int
+    events: list[EventResponse]

@@ -81,7 +81,7 @@ event-ingestion-api/
 |   |   |-- __init__.py
 |   |   |-- routes/
 |   |       |-- __init__.py
-|   |       |-- events.py        # POST /events, GET /events/{id}
+|   |       |-- events.py        # POST /events, GET /events, GET /events/{id}
 |   |       |-- health.py        # GET /health
 |   |
 |   |-- schemas/
@@ -98,7 +98,7 @@ event-ingestion-api/
 |   |   |-- __init__.py
 |   |   |-- connection.py        # Async engine, session factory, disposal
 |   |   |-- models.py            # SQLAlchemy models
-|   |   |-- repository.py        # DB queries (insert, get, idempotency)
+|   |   |-- repository.py        # DB queries (insert, get, list, idempotency)
 |   |
 |   |-- core/
 |       |-- __init__.py
@@ -120,6 +120,7 @@ event-ingestion-api/
 |   |-- test_api.py              # API endpoint tests
 |   |-- test_producer.py         # Kafka producer tests
 |   |-- test_consumer.py         # Consumer + DLQ routing tests
+|   |-- test_core.py             # DLQ handler + idempotency check tests
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
 |-- load_tests/
@@ -423,6 +424,41 @@ Validation rules: `event_id` must be a valid UUID, `event_type` must be in
 
 ---
 
+### `GET /events`
+List stored events, newest first.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `event_type` | string | — | Exact match, e.g. `order.created` |
+| `source` | string | — | Exact match, e.g. `order-service` |
+| `since` | datetime | — | Only events created at or after this |
+| `until` | datetime | — | Only events created at or before this |
+| `limit` | int | `50` | Page size, capped at 200 |
+| `offset` | int | `0` | Rows to skip |
+
+```bash
+curl "http://localhost:8000/events?event_type=order.created&limit=10"
+```
+
+**Response:**
+```json
+{
+  "total": 57,
+  "limit": 10,
+  "offset": 0,
+  "events": [ ... ]
+}
+```
+
+The filters map exactly onto the three indexes created in migration 001, and
+results are ordered `created_at DESC` to match `idx_events_created_at` rather
+than forcing a sort. `limit` is capped so a single request cannot ask for the
+whole table.
+
+---
+
 ### `GET /events/{event_id}`
 Retrieve a processed event by ID.
 
@@ -474,7 +510,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-23 tests covering schema validation, the Kafka producer, consumer processing and
+28 tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

@@ -1,7 +1,8 @@
 import logging
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.idempotency import DuplicateEventError, ensure_not_duplicate
@@ -9,7 +10,12 @@ from app.db.connection import get_db_session
 from app.db.repository import EventRepository
 from app.kafka.producer import producer as event_producer
 from app.kafka.topics import EVENTS_RAW
-from app.schemas.events import EventAccepted, EventCreate, EventResponse
+from app.schemas.events import (
+    EventAccepted,
+    EventCreate,
+    EventListResponse,
+    EventResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -38,6 +44,38 @@ async def create_event(
     )
     logger.info("Published event %s to %s", event.event_id, EVENTS_RAW)
     return EventAccepted(event_id=event.event_id)
+
+
+@router.get("/events", response_model=EventListResponse)
+async def list_events(
+    event_type: str | None = Query(None, description="Exact match, e.g. 'order.created'"),
+    source: str | None = Query(None, description="Exact match, e.g. 'order-service'"),
+    since: datetime | None = Query(None, description="Only events created at or after this"),
+    until: datetime | None = Query(None, description="Only events created at or before this"),
+    limit: int = Query(50, ge=1, le=200, description="Page size"),
+    offset: int = Query(0, ge=0, description="Rows to skip"),
+    session: AsyncSession = Depends(get_db_session),
+) -> EventListResponse:
+    """List stored events, newest first.
+
+    The limit is capped rather than unbounded so a single request can't ask the
+    database for the entire table.
+    """
+    repository = EventRepository(session)
+    events, total = await repository.list_events(
+        event_type=event_type,
+        source=source,
+        since=since,
+        until=until,
+        limit=limit,
+        offset=offset,
+    )
+    return EventListResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        events=[EventResponse.model_validate(event) for event in events],
+    )
 
 
 @router.get("/events/{event_id}", response_model=EventResponse)

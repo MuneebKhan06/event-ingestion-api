@@ -1,7 +1,8 @@
 import logging
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +42,50 @@ class EventRepository:
         stmt = select(Event).where(Event.event_id == event_id)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_events(
+        self,
+        event_type: str | None = None,
+        source: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Event], int]:
+        """Return a page of events plus the total matching the same filters.
+
+        The filter columns (event_type, source, created_at) are exactly the ones
+        indexed in migration 001 — these are the access patterns that schema was
+        designed for. Ordering is created_at DESC to match the
+        idx_events_created_at index rather than forcing a sort.
+        """
+        filters = []
+        if event_type is not None:
+            filters.append(Event.event_type == event_type)
+        if source is not None:
+            filters.append(Event.source == source)
+        if since is not None:
+            filters.append(Event.created_at >= since)
+        if until is not None:
+            filters.append(Event.created_at <= until)
+
+        page_stmt = (
+            select(Event)
+            .where(*filters)
+            .order_by(Event.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        page_result = await self._session.execute(page_stmt)
+        events = list(page_result.scalars().all())
+
+        # Counted separately so the caller can page without losing sight of how
+        # much there is; the filters have to match the page query exactly.
+        count_stmt = select(func.count()).select_from(Event).where(*filters)
+        count_result = await self._session.execute(count_stmt)
+        total = count_result.scalar_one()
+
+        return events, total
 
     async def insert_dlq_event(
         self,
