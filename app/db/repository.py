@@ -111,3 +111,29 @@ class EventRepository:
             source,
             error_reason,
         )
+
+    async def list_dlq_events(
+        self,
+        event_type: str | None = None,
+        source: str | None = None,
+        limit: int = 100,
+    ) -> list[DLQEvent]:
+        """Return failed events, oldest first.
+
+        Oldest-first so a replay reprocesses events in roughly the order they
+        originally failed, rather than inverting it.
+        """
+        filters = []
+        if event_type is not None:
+            filters.append(DLQEvent.event_type == event_type)
+        if source is not None:
+            filters.append(DLQEvent.source == source)
+
+        stmt = (
+            select(DLQEvent)
+            .where(*filters)
+            .order_by(DLQEvent.failed_at.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

@@ -121,6 +121,7 @@ event-ingestion-api/
 |   |-- test_producer.py         # Kafka producer tests
 |   |-- test_consumer.py         # Consumer + DLQ routing tests
 |   |-- test_core.py             # DLQ handler + idempotency check tests
+|   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
 |-- load_tests/
@@ -128,6 +129,7 @@ event-ingestion-api/
 |
 |-- scripts/
 |   |-- simulate_events.py       # CLI to post synthetic events
+|   |-- replay_dlq.py            # CLI to replay failed events from the DLQ
 |
 |-- docker/
 |   |-- Dockerfile.api           # FastAPI app image (with HEALTHCHECK)
@@ -307,6 +309,20 @@ Transient failures (e.g. a brief DB outage) are retried with exponential backoff
 first; only after retries are exhausted does an event go to the DLQ. Permanent
 failures — a malformed payload or an invalid `event_id` — skip retries entirely,
 since retrying them would never succeed.
+
+**Replaying failures:** once the underlying bug is fixed, `scripts/replay_dlq.py`
+re-publishes stored failures onto `events.raw` so the normal consumer reprocesses
+them. Anything that did eventually reach Postgres is deduplicated on insert by
+the same unique constraint, so a replay is safe to run more than once.
+
+```bash
+python scripts/replay_dlq.py --dry-run                        # preview only
+python scripts/replay_dlq.py --event-type order.created --limit 50
+```
+
+Payloads that cannot pass validation are reported and skipped rather than
+republished — they are the reason the event failed originally, so replaying them
+would just send them straight back to the DLQ.
 
 ---
 
@@ -510,8 +526,8 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-28 tests covering schema validation, the Kafka producer, consumer processing and
-DLQ routing, the DLQ handler and idempotency check, and the API endpoints
+34 tests covering schema validation, the Kafka producer, consumer processing and
+DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
 
