@@ -140,14 +140,60 @@ Suite: 14 → 23 tests.
 
 ---
 
+## Pass 5 — Integration tests, and the bug they found
+
+Wrote real end-to-end tests against Kafka and Postgres from
+`docker-compose.test.yml`, closing the "no integration tests" gap.
+
+**Gotcha (real bug, and a serious one):** bringing the stack up for the first
+time revealed that it could not start at all. The ZooKeeper healthcheck used the
+`ruok` four-letter command, but ZooKeeper 3.5+ refuses those unless explicitly
+whitelisted:
+
+```
+ruok is not executed because it is not in the whitelist.
+```
+
+So ZooKeeper never became healthy, and everything gated on
+`zookeeper: condition: service_healthy` — Kafka, and in the dev stack the API and
+consumer too — waited forever. The documented `docker-compose up -d` in Getting
+Started simply hung. Both compose files were affected.
+
+The first fix attempt was wrong in an instructive way: setting
+`ZOOKEEPER_4LW_COMMANDS_WHITELIST` looks right and the variable *was* present in
+the container, but it never reached `zookeeper.properties` — the Confluent
+image's env-to-property translation drops it, apparently because the property
+name starts with a digit. Checking the generated properties file rather than
+trusting the env var showed this. Passing
+`KAFKA_OPTS=-Dzookeeper.4lw.commands.whitelist=ruok` works, and the whole stack
+then came up healthy.
+
+Two things stand out. First, `docker compose config` validated these files
+happily through both this bug and the earlier folded-YAML one — schema validation
+says nothing about whether a stack actually runs. Second, this was only ever going
+to be found by running it, which is exactly the category of defect an all-mock
+suite cannot reach.
+
+With the stack up, the tests confirmed the things mocks can only assume: the
+JSONB payload round trip, producer and consumer genuinely agreeing on
+serialization across a real broker, `events.raw` really having 3 partitions
+(Decision 2), the DLQ writing to both destinations (Decision 6), and the
+`ON CONFLICT DO NOTHING` idempotency guarantee hitting the real unique
+constraint — returning False on the duplicate and leaving the original row
+untouched, rather than raising. That is the system's central correctness claim
+and it had only ever been asserted against a mock.
+
+Suite: 34 → 40 tests (6 integration, skipped when the stack is absent).
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are
   verified, but no run has been executed against a live stack, so the results
   table in the README is intentionally empty rather than populated with invented
   numbers.
-- **No integration tests against real Kafka/Postgres.** The suite is entirely
-  mock-based. `docker-compose.test.yml` exists to support real integration tests,
-  but none are written yet.
+- **Load test still not run against the full stack.** The infrastructure now
+  demonstrably comes up, so this is finally unblocked — it just hasn't been done.
 - **No schema registry.** Discussed in the README — event contracts are enforced
   only at the API layer today.

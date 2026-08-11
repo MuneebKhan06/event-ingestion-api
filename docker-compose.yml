@@ -22,6 +22,13 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      # ZooKeeper 3.5+ refuses four-letter commands unless whitelisted, so
+      # without this the ruok healthcheck below can never pass — and every
+      # service gated on zookeeper being healthy would wait forever.
+      # Passed as a JVM option rather than ZOOKEEPER_4LW_COMMANDS_WHITELIST:
+      # the image's env-to-property translation silently drops that one, since
+      # the property name starts with a digit.
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok"
     healthcheck:
       test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
       interval: 10s

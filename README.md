@@ -128,6 +128,7 @@ event-ingestion-api/
 |   |-- test_consumer.py         # Consumer + DLQ routing tests
 |   |-- test_core.py             # DLQ handler + idempotency check tests
 |   |-- test_replay.py           # DLQ replay selection tests
+|   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
 |-- load_tests/
@@ -532,18 +533,31 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-34 tests covering schema validation, the Kafka producer, consumer processing and
+34 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
 
-For integration work against real infrastructure, `docker-compose.test.yml`
-brings up Kafka and Postgres only (on shifted ports `9093`/`5433`, so it can run
-alongside the dev stack):
+### Integration tests
+
+A further 6 tests exercise real Kafka and PostgreSQL rather than mocks —
+`docker-compose.test.yml` brings up the infrastructure only, on shifted ports
+(`9093`/`5433`) so it can run alongside the dev stack:
 
 ```bash
 docker-compose -f docker-compose.test.yml up -d
+pytest tests/ -m integration
+docker-compose -f docker-compose.test.yml down -v
 ```
+
+They skip automatically when the stack isn't reachable, so the default `pytest
+tests/` and CI stay green without Docker.
+
+These cover what mocks structurally cannot: the JSONB payload round trip, the
+producer and consumer actually agreeing on serialization across a real broker,
+`events.raw` really having 3 partitions, and — most importantly — the
+`ON CONFLICT DO NOTHING` idempotency guarantee hitting the real unique
+constraint, where a mock could only ever confirm that we called it.
 
 ### Lint
 
