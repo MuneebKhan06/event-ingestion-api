@@ -87,3 +87,22 @@ class EventListResponse(BaseModel):
     limit: int
     offset: int
     events: list[EventResponse]
+
+
+class DLQEventResponse(BaseModel):
+    id: int
+    event_id: UUID | None = None
+    event_type: str | None = None
+    source: str | None = None
+    raw_payload: dict[str, Any]
+    error_reason: str
+    failed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DLQListResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    events: list[DLQEventResponse]

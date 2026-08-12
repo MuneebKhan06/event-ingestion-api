@@ -68,10 +68,10 @@ class _FakeDLQEvent:
 async def test_dry_run_publishes_nothing(monkeypatch, capsys):
     """A replay mutates the system, so --dry-run has to be genuinely inert."""
     repository = create_autospec(EventRepository, instance=True)
-    repository.list_dlq_events.return_value = [
-        _FakeDLQEvent(1, _valid_payload()),
-        _FakeDLQEvent(2, {"event_type": "broken"}),
-    ]
+    repository.list_dlq_events.return_value = (
+        [_FakeDLQEvent(1, _valid_payload()), _FakeDLQEvent(2, {"event_type": "broken"})],
+        2,
+    )
 
     import replay_dlq
 
@@ -94,10 +94,10 @@ async def test_dry_run_publishes_nothing(monkeypatch, capsys):
 async def test_replay_publishes_only_valid_events(monkeypatch, capsys):
     repository = create_autospec(EventRepository, instance=True)
     good = _valid_payload()
-    repository.list_dlq_events.return_value = [
-        _FakeDLQEvent(1, good),
-        _FakeDLQEvent(2, {"event_type": "broken"}),
-    ]
+    repository.list_dlq_events.return_value = (
+        [_FakeDLQEvent(1, good), _FakeDLQEvent(2, {"event_type": "broken"})],
+        2,
+    )
 
     import replay_dlq
 

@@ -74,7 +74,9 @@ def classify(raw_payload: object) -> tuple[EventCreate | None, str | None]:
 async def replay(args: argparse.Namespace) -> int:
     async with async_session_factory() as session:
         repository = EventRepository(session)
-        dlq_events = await repository.list_dlq_events(
+        # Oldest-first (the default) so events are reprocessed in roughly the
+        # order they originally failed.
+        dlq_events, _total = await repository.list_dlq_events(
             event_type=args.event_type, source=args.source, limit=args.limit
         )
 

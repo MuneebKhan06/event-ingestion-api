@@ -88,6 +88,7 @@ event-ingestion-api/
 |   |   |-- routes/
 |   |       |-- __init__.py
 |   |       |-- events.py        # POST /events, GET /events, GET /events/{id}
+|   |       |-- dlq.py           # GET /dlq
 |   |       |-- health.py        # GET /health
 |   |
 |   |-- schemas/
@@ -129,6 +130,7 @@ event-ingestion-api/
 |   |-- test_core.py             # DLQ handler + idempotency check tests
 |   |-- test_connection.py       # Lazy engine construction tests
 |   |-- test_consumer_loop.py    # Consume-loop offset-commit guarantees
+|   |-- test_dlq_api.py          # GET /dlq inspection endpoint tests
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
@@ -328,6 +330,9 @@ becoming silent data loss — and continuing would strand it behind a later comm
 The `restart: unless-stopped` policy on the consumer is what makes exiting a safe
 response rather than a fatal one.
 
+**Inspecting failures:** `GET /dlq` lists what failed and why, newest first, so
+this doesn't require a psql session. Its `total` is the value to alert on.
+
 **Replaying failures:** once the underlying bug is fixed, `scripts/replay_dlq.py`
 re-publishes stored failures onto `events.raw` so the normal consumer reprocesses
 them. Anything that did eventually reach Postgres is deduplicated on insert by
@@ -505,6 +510,43 @@ window after it is accepted.
 
 ---
 
+### `GET /dlq`
+List failed events, newest first.
+
+**Query parameters:** `event_type`, `source`, `limit` (default `50`, max 200),
+`offset` (default `0`).
+
+```bash
+curl "http://localhost:8000/dlq?limit=10"
+```
+
+**Response:**
+```json
+{
+  "total": 12,
+  "limit": 10,
+  "offset": 0,
+  "events": [
+    {
+      "id": 1,
+      "event_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "order.created",
+      "source": "order-service",
+      "raw_payload": { "order_id": "ORD-001" },
+      "error_reason": "DB insert failed after retries",
+      "failed_at": "2026-08-11T09:14:02Z"
+    }
+  ]
+}
+```
+
+Newest first, because the question being asked is usually "what is failing right
+now". Rows whose payload was unparseable have `null` for `event_id`,
+`event_type` and `source` — the original payload is still preserved in full.
+`total` is the figure to alert on for DLQ growth.
+
+---
+
 ### `GET /health`
 Health check endpoint.
 
@@ -544,7 +586,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-41 unit tests covering schema validation, the Kafka producer, consumer processing and
+46 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

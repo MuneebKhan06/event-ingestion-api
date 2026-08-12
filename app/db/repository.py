@@ -117,11 +117,16 @@ class EventRepository:
         event_type: str | None = None,
         source: str | None = None,
         limit: int = 100,
-    ) -> list[DLQEvent]:
-        """Return failed events, oldest first.
+        offset: int = 0,
+        newest_first: bool = False,
+    ) -> tuple[list[DLQEvent], int]:
+        """Return a page of failed events plus the total matching the filters.
 
-        Oldest-first so a replay reprocesses events in roughly the order they
-        originally failed, rather than inverting it.
+        Ordering is a genuine split by use case, so it's explicit rather than
+        assumed: replay wants oldest-first, to reprocess in roughly the order
+        things originally failed; someone inspecting a live incident wants
+        newest-first, to see what just broke. The latter is what
+        idx_dlq_events_failed_at (DESC) is built for.
         """
         filters = []
         if event_type is not None:
@@ -129,11 +134,14 @@ class EventRepository:
         if source is not None:
             filters.append(DLQEvent.source == source)
 
-        stmt = (
-            select(DLQEvent)
-            .where(*filters)
-            .order_by(DLQEvent.failed_at.asc())
-            .limit(limit)
+        ordering = DLQEvent.failed_at.desc() if newest_first else DLQEvent.failed_at.asc()
+        page_stmt = (
+            select(DLQEvent).where(*filters).order_by(ordering).limit(limit).offset(offset)
         )
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        page_result = await self._session.execute(page_stmt)
+        dlq_events = list(page_result.scalars().all())
+
+        count_stmt = select(func.count()).select_from(DLQEvent).where(*filters)
+        count_result = await self._session.execute(count_stmt)
+
+        return dlq_events, count_result.scalar_one()
