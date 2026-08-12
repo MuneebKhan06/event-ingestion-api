@@ -299,13 +299,50 @@ all 6 integration tests pass.
 
 ---
 
+## Pass 10 — The load test finally runs
+
+The results table had said "not measured" since the README was written. The
+stack now demonstrably starts, so there was no excuse left.
+
+Smoke-tested the whole path first, because publishing throughput figures for a
+pipeline that isn't actually persisting would be worse than publishing nothing:
+five events accepted, five rows in Postgres, `status: processed`.
+
+Then 60-second Locust runs at 10/50/100/200 users. Zero failed requests at every
+level. Throughput plateaus around 165 req/s — 100 to 200 users moved it under 2%
+while average latency tripled, which is what saturation looks like.
+
+Two things worth recording:
+
+The 50-user result is anomalous: worse latency than the 100-user run at a third
+of the throughput. Left it in the README as measured, flagged as anomalous,
+with a plausible-but-unverified mechanism rather than a confident story. One run
+per level on a machine also running the stack is not enough evidence to explain
+it, and quietly dropping the row would have been the dishonest fix.
+
+The `/metrics` counters added earlier turned out to be useful immediately: the
+API reported 24,193 accepted against 24,192 rows in Postgres. The single-event
+gap is exactly the deliberate duplicate from the smoke test — both copies
+accepted, since the pre-publish check is best-effort, then collapsed by
+`ON CONFLICT DO NOTHING`. Decision 4 verified under real load rather than by
+argument. The consumer trailed by ~4,700 events at peak and drained in ~30s,
+which is the asynchrony Decision 1 buys, not loss — worth confirming explicitly
+before reporting, because the two look identical in a single snapshot.
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are
   verified, but no run has been executed against a live stack, so the results
   table in the README is intentionally empty rather than populated with invented
   numbers.
-- **Load test still not run against the full stack.** The infrastructure now
-  demonstrably comes up, so this is finally unblocked — it just hasn't been done.
+- **Load test numbers are single runs on a contended machine.** They are real
+  and honestly reported, but Locust shares CPUs with the stack it measures and
+  each level ran once. The anomalous 50-user result is called out in the README
+  rather than smoothed away; explaining it properly needs repeated runs.
+- **The duplicate-check `SELECT` couples API latency to database load.** Visible
+  in the load results and worth investigating — it partially undercuts
+  Decision 1's separation of API response time from database work.
 - **No schema registry.** Discussed in the README — event contracts are enforced
   only at the API layer today.

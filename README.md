@@ -701,23 +701,55 @@ locust -f load_tests/locustfile.py --host=http://localhost:8000
 
 ## Load Test Results
 
-> **Not yet measured.** The Locust scenarios are written and verified to parse,
-> but no run has been executed against a live stack, so there are no real numbers
-> to report yet. The table below is the intended shape of the results and will be
-> filled in once the stack has actually been driven under load.
+> Measured against the full `docker-compose.yml` stack. **Indicative, not a
+> benchmark** — see the caveats below before drawing conclusions from these.
+>
+> Setup: 8-core Intel i7-1165G7, 31 GB RAM (~10 GB free), Linux 6.8, Docker
+> Compose single-node. Locust ran on the *same machine* as the stack, so client
+> and server contend for the same CPUs. 60-second runs, one run per level.
 
 | Concurrent Users | Requests/sec | Avg Latency | P95 Latency | Error Rate |
 |---|---|---|---|---|
-| 10 | not measured | not measured | not measured | not measured |
-| 50 | not measured | not measured | not measured | not measured |
-| 100 | not measured | not measured | not measured | not measured |
-| 200 | not measured | not measured | not measured | not measured |
+| 10 | 30.5 | 18 ms | 42 ms | 0.00% |
+| 50 | 62.5 | 476 ms | 840 ms | 0.00% |
+| 100 | 162.9 | 296 ms | 590 ms | 0.00% |
+| 200 | 165.1 | 876 ms | 1500 ms | 0.00% |
+
+**No failed requests at any level** — 25,134 requests total, zero errors, zero
+DLQ entries, zero publish failures.
+
+**Throughput saturates near 165 req/s.** Going from 100 to 200 users moved
+throughput by under 2% (162.9 → 165.1) while average latency tripled (296 ms →
+876 ms). That is the signature of a saturated system: the extra load queues
+rather than getting served, so latency absorbs it.
+
+**The 50-user row is anomalous and I am not going to smooth it over.** It shows
+*worse* latency than the 100-user run at a third of the throughput, which is not
+what a well-behaved curve does. With one 60-second run per level on a contended
+machine, it may simply be noise. A plausible mechanism, unverified: `POST
+/events` does a duplicate-check `SELECT` against Postgres on every request, so
+API latency is coupled to database load — and during that run the consumer was
+still draining the backlog from the previous one, hammering the same database.
+That coupling partially undercuts Decision 1's goal of decoupling API response
+time from database work. Confirming it would need repeated runs with the
+consumer stopped, which I have not done.
+
+**End-to-end integrity held under load.** The API accepted 24,193 events and
+PostgreSQL finished with 24,192 rows. The difference is exactly one: a
+deliberate duplicate sent during the smoke test, where both copies were accepted
+(the pre-publish check is best-effort by design) and `ON CONFLICT DO NOTHING`
+collapsed them into a single row — Decision 4 working as documented, under real
+load. The consumer trailed the API by roughly 4,700 events at peak and drained
+in about 30 seconds afterwards; that lag is the asynchrony Decision 1 buys, not
+loss.
 
 ---
 
 ## How I Would Scale This
 
 **Current:** Single Kafka broker, single consumer, single PostgreSQL node.
+Measured at roughly **165 requests/sec** before latency starts absorbing
+additional load (see above).
 
 **To 10x throughput:**
 - Increase Kafka partitions from 3 to 12
