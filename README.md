@@ -463,6 +463,12 @@ Validation rules: `event_id` must be a valid UUID, `event_type` must be in
 - `202 Accepted` — event published to Kafka
 - `409 Conflict` — duplicate `event_id`
 - `422 Unprocessable Entity` — validation error
+- `503 Service Unavailable` — the event could not be published to Kafka
+
+The `503` matters as a distinct case: `4xx` tells a client its request was
+wrong and resending won't help, whereas `503` means the request was fine and the
+pipeline was not. Collapsing that into a `500` leaves callers unable to tell
+which of the two happened, and retrying is the correct response to only one.
 
 ---
 
@@ -561,6 +567,7 @@ curl http://localhost:8000/metrics
 |---|---|
 | `events_accepted_total` | Events validated and published to Kafka (202) |
 | `events_duplicates_total` | Events rejected by the duplicate check (409) |
+| `events_publish_failures_total` | Events that could not be published to Kafka (503) |
 
 Plus the standard `process_*` and `python_*` metrics.
 
@@ -622,7 +629,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-51 unit tests covering schema validation, the Kafka producer, consumer processing and
+54 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

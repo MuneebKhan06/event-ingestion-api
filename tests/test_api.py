@@ -62,6 +62,62 @@ def test_create_event_duplicate_returns_409(client):
     assert response.status_code == 409
 
 
+def test_create_event_returns_503_when_kafka_is_unavailable(client, monkeypatch):
+    """A broker outage is 'retry later', not 'your request was wrong'.
+
+    Letting the KafkaError escape produced a bare 500 with no body, which a
+    client cannot act on and which reads as a bug in the request.
+    """
+    from aiokafka.errors import KafkaConnectionError
+
+    client.mock_repository.get_by_event_id.return_value = None
+    monkeypatch.setattr(
+        kafka_producer,
+        "send_event",
+        AsyncMock(side_effect=KafkaConnectionError("broker unavailable")),
+    )
+
+    response = client.post("/events", json=_payload())
+
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"].lower()
+
+
+def test_publish_failure_is_counted_and_not_counted_as_accepted(client, monkeypatch):
+    from aiokafka.errors import KafkaConnectionError
+
+    from app.core.metrics import events_accepted, events_publish_failures
+
+    client.mock_repository.get_by_event_id.return_value = None
+    monkeypatch.setattr(
+        kafka_producer, "send_event", AsyncMock(side_effect=KafkaConnectionError("down"))
+    )
+    before_failures = events_publish_failures._value.get()
+    before_accepted = events_accepted._value.get()
+
+    assert client.post("/events", json=_payload()).status_code == 503
+
+    assert events_publish_failures._value.get() == before_failures + 1
+    assert events_accepted._value.get() == before_accepted
+
+
+def test_publish_failure_is_logged_with_the_event_id(client, monkeypatch, caplog):
+    """Returning a clean 503 must not cost the operator the diagnosis."""
+    from aiokafka.errors import KafkaConnectionError
+
+    client.mock_repository.get_by_event_id.return_value = None
+    monkeypatch.setattr(
+        kafka_producer, "send_event", AsyncMock(side_effect=KafkaConnectionError("down"))
+    )
+    body = _payload()
+
+    with caplog.at_level("ERROR"):
+        client.post("/events", json=body)
+
+    assert body["event_id"] in caplog.text
+    assert "KafkaConnectionError" in caplog.text
+
+
 def test_create_event_invalid_payload_returns_422(client):
     response = client.post(
         "/events",

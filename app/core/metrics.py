@@ -25,3 +25,8 @@ events_duplicates = Counter(
     "events_duplicates_total",
     "Events rejected by the pre-publish duplicate check (HTTP 409).",
 )
+
+events_publish_failures = Counter(
+    "events_publish_failures_total",
+    "Events that could not be published to Kafka (HTTP 503).",
+)

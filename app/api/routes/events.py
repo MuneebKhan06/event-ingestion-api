@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.idempotency import DuplicateEventError, ensure_not_duplicate
-from app.core.metrics import events_accepted, events_duplicates
+from app.core.metrics import events_accepted, events_duplicates, events_publish_failures
 from app.db.connection import get_db_session
 from app.db.repository import EventRepository
 from app.kafka.producer import producer as event_producer
@@ -34,16 +34,27 @@ async def create_event(
         events_duplicates.inc()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    await event_producer.send_event(
-        EVENTS_RAW,
-        event.event_id,
-        {
-            "event_id": str(event.event_id),
-            "event_type": event.event_type,
-            "source": event.source,
-            "payload": event.payload,
-        },
-    )
+    message = {
+        "event_id": str(event.event_id),
+        "event_type": event.event_type,
+        "source": event.source,
+        "payload": event.payload,
+    }
+
+    # Scoped to the publish call alone, so a bug in our own code above still
+    # surfaces as a 500 rather than being mislabelled a broker outage.
+    try:
+        await event_producer.send_event(EVENTS_RAW, event.event_id, message)
+    except Exception as exc:
+        events_publish_failures.inc()
+        # Logged, not swallowed: the client gets a clean answer, the operator
+        # still gets the traceback and the event_id to correlate with.
+        logger.exception("Failed to publish event %s to %s", event.event_id, EVENTS_RAW)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Event could not be published; the ingestion pipeline is unavailable.",
+        ) from exc
+
     # Counted after the publish returns, not before: an event that never
     # reached Kafka has not been accepted, whatever the intent was.
     events_accepted.inc()
