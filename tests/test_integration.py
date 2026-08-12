@@ -61,6 +61,36 @@ async def db_session():
 
 
 @pytest.fixture
+async def event_producer(monkeypatch):
+    """A real, started EventProducer aimed at the test stack.
+
+    Only possible because start() resolves settings when it connects rather
+    than at import (see the settings refactor in the build log). While the
+    broker address was frozen at import, a test had no way to redirect it and
+    had to graft an externally-created client onto the producer's private
+    attribute instead — using the object in a way production never does, which
+    is precisely what an integration test should avoid.
+
+    get_settings is lru_cached, so the cache is cleared on the way in and out
+    to keep this override from leaking into other tests.
+    """
+    from app.config import get_settings
+    from app.kafka.producer import EventProducer
+
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", BOOTSTRAP)
+    get_settings.cache_clear()
+
+    producer = EventProducer()
+    await producer.start()
+    try:
+        yield producer
+    finally:
+        await producer.stop()
+        monkeypatch.undo()
+        get_settings.cache_clear()
+
+
+@pytest.fixture
 async def producer():
     from aiokafka import AIOKafkaProducer
 
@@ -217,8 +247,12 @@ async def test_event_survives_a_real_kafka_round_trip(producer):
         await consumer.stop()
 
 
-async def test_dlq_handler_writes_to_both_postgres_and_kafka(db_session, producer):
-    """Decision 6's two-destination promise, end to end."""
+async def test_dlq_handler_writes_to_both_postgres_and_kafka(db_session, event_producer):
+    """Decision 6's two-destination promise, end to end.
+
+    Uses a genuine EventProducer, so this exercises the same object graph
+    production does rather than a hand-assembled stand-in.
+    """
     from aiokafka import AIOKafkaConsumer
     from sqlalchemy import select
 
@@ -239,14 +273,8 @@ async def test_dlq_handler_writes_to_both_postgres_and_kafka(db_session, produce
     try:
         await consumer.getmany(timeout_ms=2000)
 
-        # DLQHandler expects our EventProducer wrapper, not the raw client.
-        from app.kafka.producer import EventProducer
-
-        wrapper = EventProducer()
-        wrapper._producer = producer  # already started by the fixture
-
         repository = EventRepository(db_session)
-        handler = DLQHandler(wrapper, repository)
+        handler = DLQHandler(event_producer, repository)
         event_id = uuid.uuid4()
 
         await handler.send(

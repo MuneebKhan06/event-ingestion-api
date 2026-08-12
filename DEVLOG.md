@@ -278,6 +278,27 @@ Suite: 37 → 41 unit tests.
 
 ---
 
+## Pass 9 — The integration test stops reaching into a private attribute
+
+The DLQ integration test used to build an `EventProducer` and then assign
+`wrapper._producer = producer`, grafting on an already-started client from
+another fixture. That was a workaround for the import-time settings binding: the
+broker address was fixed before the test could influence it, so there was no
+supported way to point a real producer at the test stack.
+
+Since settings resolve at `start()` (pass 7), a fixture can now set
+`KAFKA_BOOTSTRAP_SERVERS`, clear the `lru_cache`, and construct a genuine
+`EventProducer` that connects to the test broker on its own. The private poke is
+gone, and the test exercises the same object graph production uses instead of a
+hand-assembled stand-in — which is the entire point of an integration test.
+
+Worth noting as the concrete payoff of pass 7: that refactor was justified on
+the grounds that import-time configuration made things untestable, and this is
+the case that was actually paying the price. Verified against the real stack —
+all 6 integration tests pass.
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are
