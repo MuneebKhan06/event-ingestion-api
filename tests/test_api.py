@@ -233,26 +233,37 @@ def test_list_events_rejects_negative_offset(client):
     assert response.status_code == 422
 
 
-class _FakeEngine:
-    """Stands in for the async SQLAlchemy engine in health checks.
+class _FakeConnection:
+    """Fails at whichever phase the test asks it to.
 
-    engine.connect() is used as an async context manager, so this returns
-    itself and either yields a connection or raises to simulate an outage.
+    The probe connects and queries as separate steps, so a fake has to be able
+    to fail each independently — that separation is the whole point.
     """
 
-    def __init__(self, reachable: bool):
+    def __init__(self, reachable: bool, query_ok: bool):
         self._reachable = reachable
+        self._query_ok = query_ok
+        self.closed = False
 
-    def connect(self):
+    async def start(self):
+        if not self._reachable:
+            raise RuntimeError("connection refused")
         return self
 
-    async def __aenter__(self):
-        if not self._reachable:
-            raise RuntimeError("database unreachable")
-        return SimpleNamespace(execute=AsyncMock())
+    async def execute(self, _statement):
+        if not self._query_ok:
+            raise RuntimeError("relation does not exist")
 
-    async def __aexit__(self, *_exc_info):
-        return False
+    async def close(self):
+        self.closed = True
+
+
+class _FakeEngine:
+    def __init__(self, reachable: bool = True, query_ok: bool = True):
+        self.connection = _FakeConnection(reachable, query_ok)
+
+    def connect(self):
+        return self.connection
 
 
 def test_health_reports_healthy_when_dependencies_are_up(client, monkeypatch):
@@ -284,7 +295,40 @@ def test_health_returns_503_when_degraded(client, monkeypatch):
     body = response.json()
     assert body["status"] == "degraded"
     assert body["kafka"] == "disconnected"
-    assert body["database"] == "disconnected"
+    assert body["database"] == "unreachable"
+
+
+def test_health_distinguishes_a_failing_query_from_an_unreachable_database(
+    client, monkeypatch
+):
+    """Reached the database, but the query failed — a different problem.
+
+    "Unreachable" sends an operator to check the host, port and credentials;
+    a failing query sends them to check the schema and permissions. Reporting
+    both as "disconnected" points at the wrong half of the system.
+    """
+    engine = _FakeEngine(reachable=True, query_ok=False)
+    monkeypatch.setattr(health_module, "get_engine", lambda: engine)
+    monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=True))
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["kafka"] == "connected"
+    assert body["database"] == "query_failed"
+
+
+def test_health_closes_the_connection_even_when_the_query_fails(client, monkeypatch):
+    """A probe that leaks a connection per scrape would exhaust the pool."""
+    engine = _FakeEngine(reachable=True, query_ok=False)
+    monkeypatch.setattr(health_module, "get_engine", lambda: engine)
+    monkeypatch.setattr(health_module, "event_producer", SimpleNamespace(is_started=True))
+
+    client.get("/health")
+
+    assert engine.connection.closed is True
 
 
 def test_health_returns_503_when_only_kafka_is_down(client, monkeypatch):

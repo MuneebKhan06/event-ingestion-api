@@ -604,12 +604,30 @@ Health check endpoint.
 
 **Responses:**
 - `200 OK` — all dependencies reachable
-- `503 Service Unavailable` — Kafka or the database is unreachable; the body
-  reports `"status": "degraded"` and which dependency is down
+- `503 Service Unavailable` — something is degraded; the body says what
+
+| Field | Values |
+|---|---|
+| `status` | `healthy`, `degraded` |
+| `kafka` | `connected`, `disconnected` |
+| `database` | `connected`, `unreachable`, `query_failed` |
 
 The status code matters as much as the body: the image's `HEALTHCHECK`, load
 balancers and orchestrator probes all decide on the code alone, so a degraded
 instance has to answer non-2xx to be taken out of rotation.
+
+The `database` field separates two failures that need different responses.
+`unreachable` means the connection itself failed — check host, port,
+credentials. `query_failed` means the connection succeeded but the query did
+not, which points at schema or permissions instead. Reporting both as a single
+value sends whoever is on call to the wrong half of the system.
+
+The `kafka` field is a weaker signal than the database one, deliberately: it
+reports whether the producer was started, not whether the broker is reachable
+right now, because a real broker round trip on every scrape would make the
+probe expensive and flappy. The tradeoff is that a broker which died after
+startup still reads as `connected` here — `events_publish_failures_total` on
+`/metrics` is the honest signal for that.
 
 ---
 
@@ -629,7 +647,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-54 unit tests covering schema validation, the Kafka producer, consumer processing and
+56 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
