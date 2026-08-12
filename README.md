@@ -89,6 +89,7 @@ event-ingestion-api/
 |   |       |-- __init__.py
 |   |       |-- events.py        # POST /events, GET /events, GET /events/{id}
 |   |       |-- dlq.py           # GET /dlq
+|   |       |-- metrics.py       # GET /metrics
 |   |       |-- health.py        # GET /health
 |   |
 |   |-- schemas/
@@ -110,6 +111,7 @@ event-ingestion-api/
 |   |-- core/
 |       |-- __init__.py
 |       |-- idempotency.py       # Duplicate event detection
+|       |-- metrics.py           # Prometheus counters
 |       |-- dlq.py               # Dead letter queue handler
 |
 |-- consumer/
@@ -131,6 +133,7 @@ event-ingestion-api/
 |   |-- test_connection.py       # Lazy engine construction tests
 |   |-- test_consumer_loop.py    # Consume-loop offset-commit guarantees
 |   |-- test_dlq_api.py          # GET /dlq inspection endpoint tests
+|   |-- test_metrics.py          # Prometheus counter tests
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
@@ -547,6 +550,39 @@ now". Rows whose payload was unparseable have `null` for `event_id`,
 
 ---
 
+### `GET /metrics`
+Prometheus exposition for the API process.
+
+```bash
+curl http://localhost:8000/metrics
+```
+
+| Metric | Meaning |
+|---|---|
+| `events_accepted_total` | Events validated and published to Kafka (202) |
+| `events_duplicates_total` | Events rejected by the duplicate check (409) |
+
+Plus the standard `process_*` and `python_*` metrics.
+
+Two things this endpoint deliberately does **not** do:
+
+- **No labels.** Breaking these down by `event_type` or `source` is the obvious
+  next step, and it's a trap: both are client-supplied, `event_type` is any
+  dotted string, and Prometheus allocates a time series per label combination.
+  A buggy or hostile caller could mint unbounded series. That breakdown belongs
+  in a query over the events table.
+- **No consumer metrics.** The API and consumer are separate processes, so
+  events persisted, duplicates skipped at insert, and DLQ writes all happen
+  elsewhere and are not visible here. Exposing them means giving the consumer
+  its own exposition endpoint. Until then, DLQ depth is available as `total`
+  from `GET /dlq`.
+
+The endpoint reads only in-memory counters, so a scrape can't fail because Kafka
+or PostgreSQL is unhealthy — which is when metrics matter most. Dependency
+liveness is `/health`'s job.
+
+---
+
 ### `GET /health`
 Health check endpoint.
 
@@ -586,7 +622,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-46 unit tests covering schema validation, the Kafka producer, consumer processing and
+51 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

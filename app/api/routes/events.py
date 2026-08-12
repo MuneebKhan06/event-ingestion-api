@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.idempotency import DuplicateEventError, ensure_not_duplicate
+from app.core.metrics import events_accepted, events_duplicates
 from app.db.connection import get_db_session
 from app.db.repository import EventRepository
 from app.kafka.producer import producer as event_producer
@@ -30,6 +31,7 @@ async def create_event(
     try:
         await ensure_not_duplicate(repository, event.event_id)
     except DuplicateEventError as exc:
+        events_duplicates.inc()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     await event_producer.send_event(
@@ -42,6 +44,9 @@ async def create_event(
             "payload": event.payload,
         },
     )
+    # Counted after the publish returns, not before: an event that never
+    # reached Kafka has not been accepted, whatever the intent was.
+    events_accepted.inc()
     logger.info("Published event %s to %s", event.event_id, EVENTS_RAW)
     return EventAccepted(event_id=event.event_id)
 
