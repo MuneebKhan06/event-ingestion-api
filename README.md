@@ -91,6 +91,7 @@ event-ingestion-api/
 |   |       |-- dlq.py           # GET /dlq
 |   |       |-- metrics.py       # GET /metrics
 |   |       |-- health.py        # GET /health
+|   |   |-- middleware.py        # Request correlation IDs
 |   |
 |   |-- schemas/
 |   |   |-- __init__.py
@@ -139,6 +140,7 @@ event-ingestion-api/
 |   |-- test_consumer_metrics.py # Consumer counter tests
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_simulate.py         # Duplicate-check CLI logic tests
+|   |-- test_request_id.py       # Correlation ID middleware tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
@@ -632,6 +634,35 @@ The endpoint reads only in-memory counters, so a scrape can't fail because Kafka
 or PostgreSQL is unhealthy — which is when metrics matter most. Dependency
 liveness is `/health`'s job.
 
+#### Request correlation IDs
+
+Every API response carries an `X-Request-ID`, and every log line emitted while
+handling that request is prefixed with it:
+
+```
+INFO:app.api.routes.events:[trace-me-abc] Published event 47d96ce5-... to events.raw
+```
+
+Send your own to correlate across services; otherwise one is generated.
+
+```bash
+curl -H "X-Request-ID: my-trace-001" http://localhost:8000/events/<id>
+```
+
+A supplied ID must match `[A-Za-z0-9._:-]{1,64}` — it goes straight into the
+logs, so a newline would let a caller forge log lines and an unbounded value
+would bloat every record. Anything else is replaced with a generated ID rather
+than quietly rewritten, so the value echoed back is always one the caller
+either sent or can recognise as not theirs.
+
+Metrics and correlation IDs answer different questions: `/metrics` tells you
+*how many* requests are failing, an ID lets you follow *one*.
+
+This covers the API process only. The consumer runs separately with no request
+context, so its logs carry no ID. Threading one through would mean adding it to
+the Kafka message — a schema change, and a deliberate decision rather than
+something to slip in here.
+
 #### Consumer metrics (`:9100/metrics`)
 
 The consumer serves its own exposition, since it is a separate process:
@@ -719,7 +750,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-71 unit tests covering schema validation, the Kafka producer, consumer processing and
+81 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

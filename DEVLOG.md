@@ -411,6 +411,54 @@ during the outage — so that remains verified only by unit test.
 
 ---
 
+## Pass 13 — Correlation IDs
+
+Nothing tied a log line to a request. When `POST /events` logged a publish
+failure and returned 503, there was no way to connect it to the caller who saw
+it — and under load the log is one undifferentiated stream. Metrics tell you how
+many requests are failing; this lets you follow one.
+
+Middleware reads `X-Request-ID` or generates one, stashes it in a
+`contextvars.ContextVar`, and echoes it on the response. A `logging.Filter`
+reads that contextvar at emit time, so call sites don't have to accept and
+forward an ID they have no other use for.
+
+Three details that took thought rather than typing:
+
+*Client-supplied IDs are validated, not trusted.* Honouring them is the whole
+point — it is what makes a trace span services — but it means attacker-supplied
+text heading straight for the logs. A newline would let a caller forge log
+entries; an unbounded value would bloat every record. Values outside
+`[A-Za-z0-9._:-]{1,64}` are replaced with a generated ID rather than sanitised,
+so nothing is echoed back that the caller neither sent nor would recognise.
+
+*The filter is attached to handlers, not to a logger.* Filters on a logger do
+not apply to records propagated up from child loggers, so library records would
+have arrived without `request_id` and the format string would have raised on
+them — turning a logging improvement into a crash.
+
+*The contextvar is reset in a `finally`.* Without it the value survives the
+request and mislabels whatever that worker task picks up next, which is worse
+than no ID at all: a wrong trace is more misleading than a missing one.
+
+The first version of the log test only asserted the negative — that records
+outside a request lacked the ID — and never proved a record *inside* one carried
+it, which is the actual claim. Rewritten to drive the health probe's failure
+path (real code that logs mid-request) and assert the ID is present.
+Mutation-checked both the sanitising and the filter.
+
+Verified live as well as by unit test: no header → generated UUID echoed;
+`X-Request-ID: my-trace-001` → echoed unchanged; an ID containing whitespace →
+replaced with a UUID; and `docker logs eia-api` showed
+`[trace-me-abc] Published event ...`, the caller's own ID on an application log
+line.
+
+Scope is the API only, stated in the README rather than implied away: the
+consumer is a separate process, and carrying the ID across would mean putting it
+in the Kafka message.
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are
