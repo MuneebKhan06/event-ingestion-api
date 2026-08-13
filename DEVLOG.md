@@ -371,6 +371,46 @@ re-applying anything and left the rows intact.
 
 ---
 
+## Pass 12 — Restart policies, and a test method that lied
+
+Only `api` and `consumer` had `restart: unless-stopped`. Postgres, Kafka,
+ZooKeeper and Kafka UI had none, which interacts badly with an earlier
+decision: the consumer deliberately *exits* when the database is unreachable,
+on the reasoning that the container comes back. If Postgres itself never
+returns, that turns a recoverable outage into a permanent crash loop against a
+corpse. Added policies to the long-running services.
+
+`kafka-init` and `migrate` deliberately keep none, and the compose file now says
+why: they are one-shot jobs whose contract is to finish and exit 0.
+`unless-stopped` would restart them forever and break the
+`service_completed_successfully` gate that api and consumer wait on. The
+inconsistency is correct, so it is documented to stop someone tidying it away.
+
+**Gotcha — the first verification was wrong, not the policy.** `docker kill
+eia-postgres` left the container `exited` with `restarts=0`, which looked like a
+failed restart policy. Inspecting the container showed
+`RestartPolicy: unless-stopped` was present and correct. The flaw was the test:
+Docker treats `kill` and `stop` as operator intent and suppresses the restart
+policy until the container is started manually again. A test that cannot
+distinguish "policy missing" from "policy deliberately suppressed" is worse than
+no test — it would have been easy to "fix" a policy that was never broken.
+
+Simulating a genuine crash needed the process to die without Docker being asked:
+killing the host PID wasn't possible (Docker Desktop runs the daemon in a VM, so
+container PIDs aren't in this namespace), so `pg_ctl stop -m immediate` from
+inside made the postmaster exit on its own. Docker restarted it — `restarts=1` —
+health returned to 200, the three pre-crash rows survived, and four further
+events ingested cleanly.
+
+Two things confirmed in passing: during the outage `/health` reported
+`"database": "unreachable"` with 503, which is the failure-mode granularity from
+pass 8 working in a real outage rather than a mocked one; and api/consumer both
+rode it out with `restarts=0`, so nothing crash-looped. The consumer's
+exit-on-database-failure path was *not* exercised — no message was in flight
+during the outage — so that remains verified only by unit test.
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are

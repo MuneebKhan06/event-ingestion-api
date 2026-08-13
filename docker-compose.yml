@@ -19,6 +19,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     container_name: eia-zookeeper
+    restart: unless-stopped
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -38,6 +39,7 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: eia-kafka
+    restart: unless-stopped
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -70,6 +72,12 @@ services:
   # Creates the topics explicitly rather than relying on auto-create, which
   # would give them 1 partition. events.raw needs 3 (Decision 2) so up to 3
   # consumers in the group can run in parallel.
+  #
+  # Deliberately has NO restart policy, unlike every long-running service here.
+  # This is a one-shot job whose whole contract is to finish and exit 0;
+  # `unless-stopped` would restart it forever and break the
+  # service_completed_successfully gate that api and consumer wait on. The
+  # inconsistency is the correct behaviour, not an oversight.
   kafka-init:
     image: confluentinc/cp-kafka:7.6.1
     container_name: eia-kafka-init
@@ -91,6 +99,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: eia-postgres
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
@@ -111,6 +120,8 @@ services:
   # service_completed_successfully, so they can never start against a schema
   # that is missing or half-upgraded. `alembic upgrade head` is a no-op when
   # the database is already current, so restarts are harmless.
+  #
+  # Like kafka-init, no restart policy on purpose — see the note there.
   migrate:
     build:
       context: .
@@ -181,6 +192,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
     container_name: eia-kafka-ui
+    restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy

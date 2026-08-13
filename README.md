@@ -421,6 +421,19 @@ real health status rather than just "running". The API and consumer wait for
 Kafka and Postgres to report healthy before starting, so a cold `up` does not
 produce a burst of connection errors.
 
+Every long-running service has `restart: unless-stopped`, so a crashed
+dependency comes back on its own. This is load-bearing rather than decorative:
+the consumer deliberately exits when the database is unreachable, which is only
+a sound strategy if both it *and* the database restart. The two one-shot jobs
+(`kafka-init`, `migrate`) have no restart policy on purpose — they are meant to
+exit 0, and restarting them would break the completion gate the app services
+wait on.
+
+Note that `docker kill` will *not* demonstrate this: Docker treats manual
+`kill`/`stop` as operator intent and suppresses the restart policy until the
+container is started again. A crash the daemon didn't request — the process
+dying on its own — is what the policy responds to.
+
 | Service | URL |
 |---|---|
 | API | http://localhost:8000 |
