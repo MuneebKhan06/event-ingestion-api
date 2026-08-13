@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.idempotency import DuplicateEventError, ensure_not_duplicate
 from app.core.metrics import events_accepted, events_duplicates, events_publish_failures
 from app.db.connection import get_db_session
@@ -28,11 +29,20 @@ async def create_event(
 ) -> EventAccepted:
     repository = EventRepository(session)
 
-    try:
-        await ensure_not_duplicate(repository, event.event_id)
-    except DuplicateEventError as exc:
-        events_duplicates.inc()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    # Skipping this keeps the database off the request path entirely. Nothing
+    # about correctness depends on it: the check is best-effort either way,
+    # since two concurrent requests for the same event_id can both pass it,
+    # and the unique constraint in the consumer is what actually deduplicates.
+    # Turning it off trades a fast 409 for a 202 that is silently deduplicated
+    # later — the stored data is identical, only the client feedback differs.
+    if get_settings().enable_duplicate_precheck:
+        try:
+            await ensure_not_duplicate(repository, event.event_id)
+        except DuplicateEventError as exc:
+            events_duplicates.inc()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            ) from exc
 
     message = {
         "event_id": str(event.event_id),

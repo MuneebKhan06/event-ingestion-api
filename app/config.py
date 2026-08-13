@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     kafka_consumer_group: str = "event-processors"
     kafka_producer_acks: str = "1"
 
+    # POST /events reads the events table before publishing so an obvious
+    # duplicate can be answered 409 immediately. That read puts the database
+    # back on the request path, which is what Decision 1 set out to avoid, and
+    # load testing showed API latency tracking database load because of it.
+    # Disabling it is safe: the check was never the correctness mechanism, only
+    # a fast-path courtesy. See Decision 4.
+    enable_duplicate_precheck: bool = True
+
     postgres_user: str = "events_user"
     postgres_password: str = "events_password"
     postgres_db: str = "events_db"

@@ -62,6 +62,37 @@ def test_create_event_duplicate_returns_409(client):
     assert response.status_code == 409
 
 
+def test_duplicate_precheck_can_be_disabled(client, monkeypatch):
+    """With the pre-check off, the database leaves the request path entirely.
+
+    Asserting the read never happens is the point — a version that still
+    queried but ignored the answer would pass a status-code-only test while
+    keeping exactly the latency coupling this setting exists to remove.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "enable_duplicate_precheck", False)
+    # Would be a duplicate if anything asked.
+    client.mock_repository.get_by_event_id.return_value = object()
+
+    response = client.post("/events", json=_payload())
+
+    assert response.status_code == 202
+    client.mock_repository.get_by_event_id.assert_not_awaited()
+
+
+def test_duplicate_precheck_still_returns_409_when_enabled(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "enable_duplicate_precheck", True)
+    client.mock_repository.get_by_event_id.return_value = object()
+
+    response = client.post("/events", json=_payload())
+
+    assert response.status_code == 409
+    client.mock_repository.get_by_event_id.assert_awaited_once()
+
+
 def test_create_event_returns_503_when_kafka_is_unavailable(client, monkeypatch):
     """A broker outage is 'retry later', not 'your request was wrong'.
 

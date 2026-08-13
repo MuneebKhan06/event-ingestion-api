@@ -274,6 +274,22 @@ returns `409` without a Kafka round trip. That check is deliberately not the
 source of truth: two concurrent requests with the same `event_id` can both pass it,
 and the unique constraint in the consumer is what actually guarantees correctness.
 
+**That check is optional** (`ENABLE_DUPLICATE_PRECHECK`, default `true`). It
+costs one database read per request, which puts PostgreSQL back on the request
+path — precisely what Decision 1 set out to avoid — and load testing showed API
+latency tracking database load as a result. Because the check was never the
+correctness mechanism, disabling it is safe:
+
+| | Check enabled (default) | Check disabled |
+|---|---|---|
+| Known duplicate | `409`, no Kafka round trip | `202`, deduplicated by the consumer |
+| Database reads per request | 1 | 0 |
+| Rows stored for a duplicate | 1 | 1 |
+
+The last row is the important one: the outcome in the database is identical.
+What changes is how quickly a client learns it sent a duplicate, and whether the
+API's latency is exposed to database load.
+
 **Tradeoffs accepted:**
 - Slightly slower inserts due to uniqueness check
 - `event_id` must be generated client-side (documented in API spec)
@@ -475,6 +491,10 @@ The `503` matters as a distinct case: `4xx` tells a client its request was
 wrong and resending won't help, whereas `503` means the request was fine and the
 pipeline was not. Collapsing that into a `500` leaves callers unable to tell
 which of the two happened, and retrying is the correct response to only one.
+
+The `409` depends on `ENABLE_DUPLICATE_PRECHECK` (default `true`). With it
+disabled, a duplicate receives `202` instead and is deduplicated later by the
+consumer. The stored data is the same either way — see Decision 4.
 
 ---
 
@@ -679,7 +699,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-63 unit tests covering schema validation, the Kafka producer, consumer processing and
+65 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

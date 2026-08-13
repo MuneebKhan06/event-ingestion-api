@@ -381,8 +381,11 @@ re-applying anything and left the rows intact.
   and honestly reported, but Locust shares CPUs with the stack it measures and
   each level ran once. The anomalous 50-user result is called out in the README
   rather than smoothed away; explaining it properly needs repeated runs.
-- **The duplicate-check `SELECT` couples API latency to database load.** Visible
-  in the load results and worth investigating — it partially undercuts
-  Decision 1's separation of API response time from database work.
+- **The duplicate-check `SELECT` still couples API latency to database load by
+  default.** It is now opt-out (`ENABLE_DUPLICATE_PRECHECK`) rather than
+  mandatory, so a throughput-sensitive deployment can remove the coupling — but
+  the default is still on, so the out-of-the-box behaviour is unchanged and the
+  anomaly seen in the load test would still reproduce. Measuring both modes
+  under load would settle how much it actually costs; that hasn't been done.
 - **No schema registry.** Discussed in the README — event contracts are enforced
   only at the API layer today.
