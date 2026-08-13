@@ -16,7 +16,9 @@ and CI stay green without Docker.
 import asyncio
 import json
 import socket
+import sys
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -47,6 +49,31 @@ pytestmark = [
         ),
     ),
 ]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def apply_migrations():
+    """Bring the test database up to head before anything queries it.
+
+    Running the real migrations rather than a separate schema fixture means
+    these tests would fail if a migration were broken — which is the point of
+    having them.
+    """
+    import os
+    import subprocess
+
+    env = {**os.environ, "POSTGRES_HOST": POSTGRES_HOST, "POSTGRES_PORT": str(POSTGRES_PORT)}
+    env.pop("DATABASE_URL", None)  # let it derive from the POSTGRES_* values
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}")
 
 
 @pytest.fixture

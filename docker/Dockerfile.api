@@ -11,6 +11,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+# The same image runs the `migrate` service, so it carries the migrations.
+COPY alembic/ ./alembic/
+COPY alembic.ini .
 
 # Run as a non-root user: a compromised process in the container should
 # not have root inside it.

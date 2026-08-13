@@ -10,7 +10,6 @@ __pycache__/
 tests/
 load_tests/
 scripts/
-migrations/
 docker/
 docker-compose*.yml
 README.md

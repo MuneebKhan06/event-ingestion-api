@@ -64,10 +64,12 @@ services:
       POSTGRES_USER: events_user
       POSTGRES_PASSWORD: events_password
       POSTGRES_DB: events_db
-    volumes:
-      - ./migrations:/docker-entrypoint-initdb.d:ro
-    # No named volume: test data is throwaway, and tmpfs keeps it in memory so
-    # a fresh stack always starts from a clean schema.
+    # No schema seeding here: the integration tests run `alembic upgrade head`
+    # themselves, so they exercise the same migration path production uses
+    # instead of a parallel one that could drift from it.
+    #
+    # No named volume either: test data is throwaway, and tmpfs keeps it in
+    # memory so a fresh stack always starts from a clean database.
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:

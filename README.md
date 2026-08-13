@@ -121,9 +121,10 @@ event-ingestion-api/
 |   |-- retry.py                 # Exponential backoff retry logic
 |   |-- metrics.py               # Consumer-side Prometheus counters
 |
-|-- migrations/
-|   |-- 001_create_events_table.sql
-|   |-- 002_create_dlq_table.sql
+|-- alembic/
+|   |-- env.py                   # Async migration environment
+|   |-- versions/
+|       |-- 0001_initial_schema.py
 |
 |-- tests/
 |   |-- __init__.py
@@ -155,6 +156,7 @@ event-ingestion-api/
 |-- docker-compose.test.yml      # Infra-only stack for tests
 |-- .dockerignore
 |-- .env.example                 # Environment variable template
+|-- alembic.ini                  # Migration configuration
 |-- pyproject.toml               # Ruff configuration
 |-- pytest.ini                   # Pytest configuration (asyncio auto mode)
 |-- requirements.txt
@@ -386,8 +388,10 @@ docker-compose up -d
 ```
 
 This starts Zookeeper, Kafka, PostgreSQL, the FastAPI API, the consumer, and Kafka UI.
-The database schema is applied automatically on first start — the `migrations/`
-directory is mounted into the Postgres init directory and runs in filename order.
+The database schema is applied automatically by a one-shot `migrate` service
+running `alembic upgrade head`; the API and consumer wait for it to complete, so
+they never start against a missing or half-upgraded schema. Re-running is a
+no-op when the database is already current, so restarts are safe.
 
 ### 4. Verify everything is running
 
@@ -704,8 +708,30 @@ constraint, where a mock could only ever confirm that we called it.
 ### Lint
 
 ```bash
-ruff check app/ consumer/ tests/ load_tests/ scripts/
+ruff check app/ consumer/ tests/ load_tests/ scripts/ alembic/
 ```
+
+### Database migrations
+
+Schema changes go through Alembic. `alembic/versions/` is the single source of
+truth — there is no separate SQL to keep in sync.
+
+```bash
+alembic upgrade head          # apply everything (what the migrate service runs)
+alembic revision -m "add x"   # new revision; --autogenerate to diff the models
+alembic downgrade -1          # step back one
+```
+
+`alembic/env.py` takes its URL from the same `app.config` settings the
+application uses, so migrations and the app cannot be pointed at different
+databases by editing one and forgetting the other. It also sets
+`compare_type=True`, so autogenerate reports column-type drift rather than
+silently ignoring it.
+
+The schema was previously seeded by SQL files mounted into Postgres's
+`/docker-entrypoint-initdb.d`. That only runs against an *empty* data
+directory, so it could create a schema but never change one — evolving an
+existing database would have meant destroying its data.
 
 ### Continuous integration
 

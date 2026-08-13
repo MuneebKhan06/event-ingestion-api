@@ -97,14 +97,33 @@ services:
       <<: *postgres-credentials
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Files here run once on first init, in filename order — so 001_ creates
-      # the events table before 002_ creates the DLQ table.
-      - ./migrations:/docker-entrypoint-initdb.d:ro
+      # Schema is no longer seeded here. /docker-entrypoint-initdb.d only runs
+      # against an empty data directory, so it could create a schema but never
+      # change one — see the `migrate` service below.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U events_user -d events_db"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Applies schema migrations before anything touches the database. Runs to
+  # completion and exits; api and consumer wait on that via
+  # service_completed_successfully, so they can never start against a schema
+  # that is missing or half-upgraded. `alembic upgrade head` is a no-op when
+  # the database is already current, so restarts are harmless.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: eia-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgres-credentials
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    command: ["alembic", "upgrade", "head"]
 
   api:
     build:
@@ -117,6 +136,8 @@ services:
       postgres:
         condition: service_healthy
       kafka-init:
+        condition: service_completed_successfully
+      migrate:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
@@ -138,6 +159,8 @@ services:
       postgres:
         condition: service_healthy
       kafka-init:
+        condition: service_completed_successfully
+      migrate:
         condition: service_completed_successfully
     # The consumer exits deliberately when the database is unreachable (see
     # consumer/main.py) rather than skipping messages. That is only a sound

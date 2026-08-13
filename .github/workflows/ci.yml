@@ -32,7 +32,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint
-        run: ruff check app/ consumer/ tests/ load_tests/ scripts/
+        run: ruff check app/ consumer/ tests/ load_tests/ scripts/ alembic/
 
       - name: Test
         run: pytest tests/

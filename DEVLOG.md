@@ -331,6 +331,46 @@ before reporting, because the two look identical in a single snapshot.
 
 ---
 
+## Pass 11 — Real migrations, and a type mismatch they exposed
+
+The schema came from SQL files mounted into `/docker-entrypoint-initdb.d`, which
+only runs against an empty data directory. That could create a schema but never
+change one: any future column or index would have meant wiping the volume.
+Replaced with Alembic, applied by a one-shot `migrate` service that api and
+consumer gate on via `service_completed_successfully`.
+
+**Gotcha found while writing the initial revision:** the models and the actual
+database disagreed. `Mapped[datetime]` without an explicit type maps to
+`TIMESTAMP WITHOUT TIME ZONE`, but the SQL had created the columns as
+`TIMESTAMPTZ`. Invisible while the schema came from hand-written SQL — the ORM
+simply read whatever was there — but the moment anything generated DDL *from*
+the models (autogenerate, `create_all`), it would have produced timezone-naive
+columns silently disagreeing with production. Timezone bugs found later are
+miserable to diagnose. `error_reason` had drifted too: `VARCHAR` in the model,
+`TEXT` in the database.
+
+Fixed the models to state `DateTime(timezone=True)` and `Text` explicitly, so
+model and schema now agree, and set `compare_type=True` in `env.py` so this
+class of drift is reported by future autogenerate runs instead of ignored.
+
+The old `.sql` files are deleted rather than kept "for reference" — two
+descriptions of one schema drift apart, and this pass is a demonstration of
+exactly that.
+
+The test stack no longer seeds SQL either; the integration tests run
+`alembic upgrade head` themselves, so they exercise the same migration path
+production does rather than a parallel one that could rot.
+
+Verified against a genuinely empty volume: `down -v`, then up, migrate exited 0
+having applied `-> 0001`, and `psql \d` showed both tables matching the old SQL
+exactly — `timestamp with time zone`, the unique constraint on `event_id`, and
+all four indexes including the two `DESC` ones. End to end afterwards: health
+200, 5 accepted, 5 persisted, `created_at` serialising with a `Z`. Re-running
+the migrate service on the already-migrated database exited 0 without
+re-applying anything and left the rows intact.
+
+---
+
 ## Known gaps
 
 - **Load test results are not measured.** The Locust scenarios parse and are
