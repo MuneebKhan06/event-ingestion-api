@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     consumer_max_retries: int = 3
     consumer_retry_backoff_base_seconds: float = 1.0
+    # The consumer serves its own Prometheus exposition, since it is a separate
+    # process from the API and its counters live in a separate registry.
+    consumer_metrics_port: int = 9100
 
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":

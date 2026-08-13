@@ -16,6 +16,8 @@ COPY consumer/ ./consumer/
 RUN useradd --create-home --uid 1000 appuser
 USER appuser
 
+EXPOSE 9100
+
 # Exec form (no shell wrapper) so the process is PID 1 and receives
 # SIGTERM directly — that's what consumer/main.py's graceful shutdown
 # handler depends on to finish its in-flight message before exiting.

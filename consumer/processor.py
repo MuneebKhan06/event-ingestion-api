@@ -6,6 +6,14 @@ from aiokafka.structs import ConsumerRecord
 
 from app.core.dlq import DLQHandler
 from app.db.repository import EventRepository
+from consumer.metrics import (
+    DLQ_REASON_INVALID_EVENT_ID,
+    DLQ_REASON_MISSING_FIELDS,
+    DLQ_REASON_RETRY_EXHAUSTED,
+    dlq_writes,
+    events_duplicates_skipped,
+    events_persisted,
+)
 from consumer.retry import RetryExhaustedError, with_retry
 
 logger = logging.getLogger(__name__)
@@ -30,6 +38,7 @@ async def process_message(
             event_type=event_type,
             source=source,
         )
+        dlq_writes.labels(reason=DLQ_REASON_MISSING_FIELDS).inc()
         return
 
     try:
@@ -41,6 +50,7 @@ async def process_message(
             event_type=event_type,
             source=source,
         )
+        dlq_writes.labels(reason=DLQ_REASON_INVALID_EVENT_ID).inc()
         return
 
     async def _insert() -> bool:
@@ -58,9 +68,15 @@ async def process_message(
             event_type=event_type,
             source=source,
         )
+        dlq_writes.labels(reason=DLQ_REASON_RETRY_EXHAUSTED).inc()
         return
 
     if inserted:
+        events_persisted.inc()
         logger.info("Processed event %s", event_id)
     else:
+        # Not an error: at-least-once delivery means redeliveries are expected,
+        # and this is the unique constraint doing its job. Counted separately
+        # so a rising duplicate rate is visible without looking like failure.
+        events_duplicates_skipped.inc()
         logger.info("Event %s already processed (duplicate), skipping", event_id)

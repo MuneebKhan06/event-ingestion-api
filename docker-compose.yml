@@ -144,6 +144,10 @@ services:
     # strategy if it comes back, so the restart policy is load-bearing here,
     # not boilerplate.
     restart: unless-stopped
+    ports:
+      # Prometheus exposition for the consumer process — separate from the
+      # API's, because they are separate processes with separate registries.
+      - "9100:9100"
     environment:
       <<: *app-env
       KAFKA_CONSUMER_GROUP: event-processors

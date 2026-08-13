@@ -2,6 +2,8 @@ import asyncio
 import logging
 import signal
 
+from prometheus_client import start_http_server
+
 from app.config import get_settings
 from app.core.dlq import DLQHandler
 from app.db.connection import async_session_factory, dispose_engine
@@ -43,6 +45,23 @@ async def run() -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown_requested.set)
+
+    # Served from a background thread by prometheus_client, so a scrape can't
+    # be blocked by the consume loop being busy or stuck on a slow message —
+    # which is exactly when someone would be scraping.
+    #
+    # A failure to bind is logged and swallowed on purpose. Metrics are
+    # auxiliary: losing them should cost observability, not availability, and
+    # letting an occupied port stop the consumer from consuming would be a
+    # strictly worse outcome than running blind.
+    try:
+        start_http_server(settings.consumer_metrics_port)
+        logger.info("Consumer metrics on :%d/metrics", settings.consumer_metrics_port)
+    except OSError:
+        logger.exception(
+            "Could not bind metrics port %d; continuing without metrics",
+            settings.consumer_metrics_port,
+        )
 
     await consumer.start()
     await dlq_producer.start()

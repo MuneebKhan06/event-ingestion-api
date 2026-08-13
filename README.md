@@ -119,6 +119,7 @@ event-ingestion-api/
 |   |-- main.py                  # Consumer entry point + graceful shutdown
 |   |-- processor.py             # Event processing logic
 |   |-- retry.py                 # Exponential backoff retry logic
+|   |-- metrics.py               # Consumer-side Prometheus counters
 |
 |-- migrations/
 |   |-- 001_create_events_table.sql
@@ -133,7 +134,8 @@ event-ingestion-api/
 |   |-- test_connection.py       # Lazy engine construction tests
 |   |-- test_consumer_loop.py    # Consume-loop offset-commit guarantees
 |   |-- test_dlq_api.py          # GET /dlq inspection endpoint tests
-|   |-- test_metrics.py          # Prometheus counter tests
+|   |-- test_metrics.py          # API Prometheus counter tests
+|   |-- test_consumer_metrics.py # Consumer counter tests
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
@@ -578,15 +580,41 @@ Two things this endpoint deliberately does **not** do:
   dotted string, and Prometheus allocates a time series per label combination.
   A buggy or hostile caller could mint unbounded series. That breakdown belongs
   in a query over the events table.
-- **No consumer metrics.** The API and consumer are separate processes, so
-  events persisted, duplicates skipped at insert, and DLQ writes all happen
-  elsewhere and are not visible here. Exposing them means giving the consumer
-  its own exposition endpoint. Until then, DLQ depth is available as `total`
-  from `GET /dlq`.
+- **No consumer metrics here.** The API and consumer are separate processes
+  with separate registries, so what the consumer does is exposed on its own
+  endpoint (below) rather than this one.
 
 The endpoint reads only in-memory counters, so a scrape can't fail because Kafka
 or PostgreSQL is unhealthy — which is when metrics matter most. Dependency
 liveness is `/health`'s job.
+
+#### Consumer metrics (`:9100/metrics`)
+
+The consumer serves its own exposition, since it is a separate process:
+
+```bash
+curl http://localhost:9100/metrics
+```
+
+| Metric | Meaning |
+|---|---|
+| `events_persisted_total` | Events inserted into PostgreSQL |
+| `events_duplicates_skipped_total` | Redeliveries dropped by the unique constraint |
+| `dlq_writes_total{reason}` | Events routed to the DLQ, by reason |
+
+`dlq_writes_total` **is** labelled, unlike the API's counters, and the
+difference is deliberate: `reason` comes from a fixed set defined in code
+(`missing_fields`, `invalid_event_id`, `retry_exhausted`), whereas `event_type`
+would be attacker-controlled. Labels are fine when the value space is yours. All
+three series are initialised at zero so alerting expressions referencing them
+don't break by only existing after the first failure.
+
+Duplicates are counted separately from persists rather than as errors:
+at-least-once delivery makes redeliveries normal, so a rising duplicate rate is
+information, not breakage.
+
+If the metrics port is already bound the consumer logs the failure and carries
+on without it — losing metrics should cost observability, not availability.
 
 ---
 
@@ -647,7 +675,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-56 unit tests covering schema validation, the Kafka producer, consumer processing and
+63 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

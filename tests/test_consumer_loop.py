@@ -85,6 +85,25 @@ async def test_failure_is_logged_with_enough_context_to_find_the_message(
     assert "offset not committed" in logged
 
 
+async def test_consumer_still_runs_when_the_metrics_port_is_taken(wiring, monkeypatch):
+    """Metrics are auxiliary — losing them must not stop the consumer.
+
+    A bind failure taking down the service would trade availability for
+    observability, which is the wrong way round.
+    """
+    monkeypatch.setattr(consumer_main, "process_message", AsyncMock())
+    monkeypatch.setattr(
+        consumer_main,
+        "start_http_server",
+        lambda _port: (_ for _ in ()).throw(OSError("Address already in use")),
+    )
+
+    await consumer_main.run()
+
+    # The message was still handled and its offset committed.
+    wiring.consumer.commit.assert_awaited_once()
+
+
 async def test_shutdown_still_stops_cleanly(wiring, monkeypatch):
     monkeypatch.setattr(consumer_main, "process_message", AsyncMock())
 
