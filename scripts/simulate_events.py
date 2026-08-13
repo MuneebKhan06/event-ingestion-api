@@ -16,6 +16,7 @@ Examples:
 import argparse
 import random
 import sys
+import time
 import uuid
 
 import httpx
@@ -75,9 +76,70 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--duplicate",
         action="store_true",
-        help="send one event twice to exercise the duplicate/409 path",
+        help="send one event, wait for it to persist, then resend it to exercise the 409 path",
+    )
+    parser.add_argument(
+        "--duplicate-timeout",
+        type=float,
+        default=10.0,
+        help="seconds to wait for the first copy to be persisted",
     )
     return parser.parse_args(argv)
+
+
+def wait_until_persisted(
+    client: httpx.Client, event_id: str, timeout: float, sleep: float = 0.5
+) -> bool:
+    """Poll until the consumer has stored the event, or give up.
+
+    Ingestion is asynchronous, so an event accepted a moment ago is not yet
+    queryable. Resending immediately therefore races the consumer and usually
+    gets another 202 — which says nothing about idempotency either way.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if client.get(f"/events/{event_id}", timeout=10.0).status_code == 200:
+            return True
+        time.sleep(sleep)
+    return False
+
+
+def run_duplicate_check(client: httpx.Client, args: argparse.Namespace) -> int:
+    event = build_event(args.event_type or EVENT_TYPES[0])
+    event_id = event["event_id"]
+
+    print(f"Sending event {event_id}:")
+    if post_event(client, event) != 202:
+        print("\nFirst send was not accepted; cannot test the duplicate path.")
+        return 1
+
+    print(f"Waiting up to {args.duplicate_timeout:.0f}s for the consumer to persist it...")
+    if not wait_until_persisted(client, event_id, args.duplicate_timeout):
+        print(
+            "\nThe event was accepted but never appeared in the database, so the "
+            "duplicate path could not be tested. Is the consumer running?"
+        )
+        return 1
+
+    print("Persisted. Re-sending the same event_id:")
+    second_status = post_event(client, event)
+
+    if second_status == 409:
+        print("\nDuplicate correctly rejected with 409.")
+        return 0
+
+    if second_status == 202:
+        # Can't read the server's config from here, so describe rather than assert.
+        print(
+            "\nSecond send returned 202 even though the first copy is stored. "
+            "That is expected when the API runs with ENABLE_DUPLICATE_PRECHECK=false: "
+            "duplicates are accepted and then dropped by the unique constraint, so "
+            "no second row is created either way."
+        )
+        return 0
+
+    print(f"\nSecond send returned an unexpected {second_status}.")
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,20 +147,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with httpx.Client(base_url=args.host) as client:
         if args.duplicate:
-            event = build_event(args.event_type or EVENT_TYPES[0])
-            print(f"Sending event {event['event_id']} twice:")
-            post_event(client, event)
-            second_status = post_event(client, event)
-            # The duplicate is only rejected once the consumer has persisted
-            # the first copy — until then the pre-publish check finds nothing.
-            if second_status == 409:
-                print("\nDuplicate correctly rejected with 409.")
-            else:
-                print(
-                    f"\nSecond send returned {second_status}, not 409 — the consumer "
-                    "may not have persisted the first copy yet. Retry in a moment."
-                )
-            return 0
+            return run_duplicate_check(client, args)
 
         print(f"Sending {args.count} event(s) to {args.host}:")
         accepted = 0

@@ -138,6 +138,7 @@ event-ingestion-api/
 |   |-- test_metrics.py          # API Prometheus counter tests
 |   |-- test_consumer_metrics.py # Consumer counter tests
 |   |-- test_replay.py           # DLQ replay selection tests
+|   |-- test_simulate.py         # Duplicate-check CLI logic tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
@@ -474,6 +475,12 @@ python scripts/simulate_events.py --count 5 --event-type order.created
 python scripts/simulate_events.py --duplicate   # exercises the 409 path
 ```
 
+`--duplicate` sends an event, **waits for the consumer to persist it**, then
+resends the same `event_id`. The wait is the point: ingestion is asynchronous,
+so resending immediately just races the consumer and gets another `202`, which
+demonstrates nothing. If the first copy never lands within `--duplicate-timeout`
+(default 10s) it says so and exits non-zero rather than reporting a pass.
+
 ---
 
 ## API Reference
@@ -712,7 +719,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-65 unit tests covering schema validation, the Kafka producer, consumer processing and
+71 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
