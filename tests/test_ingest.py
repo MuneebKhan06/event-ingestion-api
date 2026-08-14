@@ -137,3 +137,75 @@ async def test_unexpected_status_is_recorded_separately_from_success():
 
     assert tally["rejected"] == 1
     assert tally["accepted"] == 0
+
+
+# --------------------------------------------------------------------------
+# Metrics
+# --------------------------------------------------------------------------
+
+
+def _counter(metric, source: str) -> float:
+    return metric.labels(source=source)._value.get()
+
+
+async def test_accepted_and_fetched_counters_move_together():
+    from ingest import metrics
+
+    client = _FakeClient(get_response=_FakeResponse(json_body=USGS_BODY), post_statuses=[202])
+    before_fetched = _counter(metrics.events_fetched, "usgs")
+    before_accepted = _counter(metrics.events_accepted, "usgs")
+
+    await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert _counter(metrics.events_fetched, "usgs") == before_fetched + 1
+    assert _counter(metrics.events_accepted, "usgs") == before_accepted + 1
+
+
+async def test_duplicates_are_counted_apart_from_failures():
+    """Duplicates are the steady state here, so they must not read as errors."""
+    from ingest import metrics
+
+    client = _FakeClient(get_response=_FakeResponse(json_body=USGS_BODY), post_statuses=[409])
+    before_dupe = _counter(metrics.events_duplicate, "usgs")
+    before_failed = _counter(metrics.failures, "usgs")
+
+    await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert _counter(metrics.events_duplicate, "usgs") == before_dupe + 1
+    assert _counter(metrics.failures, "usgs") == before_failed
+
+
+async def test_fetch_failure_is_counted_even_though_it_returns_early():
+    """The early return path must not skip recording."""
+    from ingest import metrics
+
+    client = _FakeClient(get_error=RuntimeError("upstream down"))
+    before = _counter(metrics.failures, "weather")
+
+    await poll_once(client, SOURCES["weather"], "http://api")
+
+    assert _counter(metrics.failures, "weather") == before + 1
+
+
+async def test_counters_are_scoped_per_source():
+    from ingest import metrics
+
+    client = _FakeClient(get_response=_FakeResponse(json_body=USGS_BODY), post_statuses=[202])
+    before_other = _counter(metrics.events_accepted, "github")
+
+    await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert _counter(metrics.events_accepted, "github") == before_other
+
+
+def test_every_source_series_exists_before_any_poll():
+    """Series that appear only on first use break alerts that reference them."""
+    from ingest import metrics
+
+    exposed = {
+        sample.labels["source"]
+        for metric in metrics.failures.collect()
+        for sample in metric.samples
+        if "source" in sample.labels
+    }
+    assert set(SOURCES) <= exposed

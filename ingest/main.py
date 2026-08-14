@@ -12,10 +12,12 @@ import sys
 from pathlib import Path
 
 import httpx
+from prometheus_client import start_http_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import get_settings  # noqa: E402
+from ingest.metrics import record  # noqa: E402
 from ingest.sources import Source, resolve  # noqa: E402
 
 logger = logging.getLogger("ingest")
@@ -45,6 +47,7 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
     except Exception as exc:
         logger.warning("Fetch failed for %s: %s", source.name, exc)
         tally["failed"] += 1
+        record(source.name, tally)
         return tally
 
     tally["fetched"] = len(events)
@@ -65,6 +68,7 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
             tally["rejected"] += 1
             logger.warning("Unexpected %s for %s event", status, source.name)
 
+    record(source.name, tally)
     logger.info(
         "%s: fetched=%d accepted=%d duplicate=%d rejected=%d failed=%d",
         source.name,
@@ -89,6 +93,17 @@ async def run() -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown.set)
+
+    # Bind failure is logged and swallowed: losing metrics should cost
+    # observability, not the ingestion this process exists to do.
+    try:
+        start_http_server(settings.ingest_metrics_port)
+        logger.info("Ingest metrics on :%d/metrics", settings.ingest_metrics_port)
+    except OSError:
+        logger.exception(
+            "Could not bind metrics port %d; continuing without metrics",
+            settings.ingest_metrics_port,
+        )
 
     logger.info(
         "Ingest started (sources=%s, target=%s, interval=%ss)",

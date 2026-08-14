@@ -16,6 +16,8 @@ COPY ingest/ ./ingest/
 RUN useradd --create-home --uid 1000 appuser
 USER appuser
 
+EXPOSE 9200
+
 # Exec form so the process is PID 1 and receives SIGTERM, which is what the
 # poll loop waits on to stop between polls rather than mid-request.
 CMD ["python", "-m", "ingest.main"]

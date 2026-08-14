@@ -121,6 +121,7 @@ event-ingestion-api/
 |   |-- __init__.py
 |   |-- main.py                  # Poll loop + graceful shutdown
 |   |-- sources.py               # Public API sources and parsers
+|   |-- metrics.py               # Ingest-side Prometheus counters
 |
 |-- consumer/
 |   |-- __init__.py
@@ -725,6 +726,22 @@ context, so its logs carry no ID. Threading one through would mean adding it to
 the Kafka message — a schema change, and a deliberate decision rather than
 something to slip in here.
 
+#### Ingest metrics (`:9200/metrics`)
+
+| Metric | Meaning |
+|---|---|
+| `ingest_events_fetched_total{source}` | Records parsed from an upstream response |
+| `ingest_events_accepted_total{source}` | Accepted by the API (202) |
+| `ingest_events_duplicate_total{source}` | Already seen (409) |
+| `ingest_events_rejected_total{source}` | Refused for any other reason |
+| `ingest_failures_total{source}` | Fetches or publishes that raised |
+
+Labelled by `source`, which is safe here because the names come from a fixed
+dict in this repository rather than from anything upstream sends. Duplicates get
+their own counter instead of being folded into failures: feeds repeat unchanged
+records between polls, so for this process duplicates are the healthy steady
+state and counting them as errors would hide the rate that matters.
+
 #### Consumer metrics (`:9100/metrics`)
 
 The consumer serves its own exposition, since it is a separate process:
@@ -812,7 +829,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-103 unit tests covering schema validation, the Kafka producer, consumer processing and
+108 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

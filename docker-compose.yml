@@ -200,6 +200,10 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    ports:
+      # Third exposition endpoint, one per process, since each has its own
+      # registry: api on 8000, consumer on 9100, ingest here.
+      - "9200:9200"
     # Only HTTP settings here. Unlike api and consumer this service never opens
     # a database or Kafka connection, so merging the shared app-env anchor would
     # hand it credentials it has no use for.
@@ -207,6 +211,7 @@ services:
       INGEST_API_URL: http://api:8000
       INGEST_SOURCES: usgs,weather
       INGEST_INTERVAL_SECONDS: "30"
+      INGEST_METRICS_PORT: "9200"
       LOG_LEVEL: INFO
 
   kafka-ui:

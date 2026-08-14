@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     ingest_api_url: str = "http://localhost:8000"
     ingest_sources: str = "usgs,weather"
     ingest_interval_seconds: float = 30.0
+    ingest_metrics_port: int = 9200
 
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
