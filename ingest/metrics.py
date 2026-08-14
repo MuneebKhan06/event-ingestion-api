@@ -49,7 +49,20 @@ failures = Counter(
     ["source"],
 )
 
-_ALL = (events_fetched, events_accepted, events_duplicate, events_rejected, failures)
+backoff_skips = Counter(
+    "ingest_backoff_skips_total",
+    "Polls skipped because the source is backing off after failures.",
+    ["source"],
+)
+
+_ALL = (
+    events_fetched,
+    events_accepted,
+    events_duplicate,
+    events_rejected,
+    failures,
+    backoff_skips,
+)
 
 # Every series exists at zero from startup. A counter that springs into being on
 # first failure breaks the rate() and alert expressions that reference it,

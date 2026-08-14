@@ -9,6 +9,7 @@ import asyncio
 import logging
 import signal
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -17,14 +18,54 @@ from prometheus_client import start_http_server
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import get_settings  # noqa: E402
-from ingest.metrics import record  # noqa: E402
+from ingest.backoff import BackoffRegistry  # noqa: E402
+from ingest.metrics import backoff_skips, record  # noqa: E402
 from ingest.sources import Source, resolve  # noqa: E402
 
 logger = logging.getLogger("ingest")
 
 
+def rate_limit_delay(response: httpx.Response) -> float | None:
+    """Seconds to wait if this response is a rate limit, else None.
+
+    Recognises 429, and 403 with an exhausted X-RateLimit-Remaining, which is
+    how GitHub refuses an over-quota unauthenticated caller rather than 429.
+
+    Retry-After may also be an HTTP date. Only the integer seconds form is
+    handled; a date falls through to the normal exponential backoff, which is
+    a safe default rather than a wrong parse.
+    """
+    limited = response.status_code == 429 or (
+        response.status_code == 403 and response.headers.get("X-RateLimit-Remaining") == "0"
+    )
+    if not limited:
+        return None
+
+    retry_after = response.headers.get("Retry-After", "")
+    if retry_after.isdigit():
+        return float(retry_after)
+
+    reset = response.headers.get("X-RateLimit-Reset", "")
+    if reset.isdigit():
+        # Absolute epoch seconds; convert to a delay, floored at zero.
+        return max(0.0, float(reset) - time.time())
+
+    return 0.0
+
+
+class RateLimited(Exception):
+    def __init__(self, delay: float | None):
+        self.delay = delay
+        super().__init__(f"rate limited, retry after {delay}s")
+
+
 async def fetch_events(client: httpx.AsyncClient, source: Source) -> list[dict]:
     response = await client.get(source.url, timeout=20.0)
+
+    delay = rate_limit_delay(response)
+    if delay is not None:
+        raise RateLimited(delay)
+
     response.raise_for_status()
     return source.parse(response.json())
 
@@ -44,6 +85,12 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
     tally = {"fetched": 0, "accepted": 0, "duplicate": 0, "rejected": 0, "failed": 0}
     try:
         events = await fetch_events(client, source)
+    except RateLimited as exc:
+        logger.warning("Rate limited by %s", source.name)
+        tally["failed"] += 1
+        tally["retry_after"] = exc.delay
+        record(source.name, tally)
+        return tally
     except Exception as exc:
         logger.warning("Fetch failed for %s: %s", source.name, exc)
         tally["failed"] += 1
@@ -112,12 +159,30 @@ async def run() -> None:
         interval,
     )
 
+    backoff = BackoffRegistry()
+
     async with httpx.AsyncClient() as client:
         while not shutdown.is_set():
             for source in sources:
                 if shutdown.is_set():
                     break
-                await poll_once(client, source, api_url)
+
+                if backoff.should_skip(source.name):
+                    # Counted, not just skipped silently, so a source sitting
+                    # in backoff cannot be mistaken for a healthy quiet one.
+                    backoff_skips.labels(source=source.name).inc()
+                    logger.info("Skipping %s while backing off", source.name)
+                    continue
+
+                tally = await poll_once(client, source, api_url)
+                if tally["failed"]:
+                    backoff.record_failure(
+                        source.name,
+                        reason="fetch failed",
+                        retry_after=tally.get("retry_after"),
+                    )
+                else:
+                    backoff.record_success(source.name)
 
             # Waiting on the shutdown event rather than sleeping means SIGTERM
             # is honoured immediately instead of after the full interval.

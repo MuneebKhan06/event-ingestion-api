@@ -122,6 +122,7 @@ event-ingestion-api/
 |   |-- main.py                  # Poll loop + graceful shutdown
 |   |-- sources.py               # Public API sources and parsers
 |   |-- metrics.py               # Ingest-side Prometheus counters
+|   |-- backoff.py               # Per source backoff after failures
 |
 |-- consumer/
 |   |-- __init__.py
@@ -151,6 +152,7 @@ event-ingestion-api/
 |   |-- test_request_id.py       # Correlation ID middleware tests
 |   |-- test_ingest.py           # Public API source parsing tests
 |   |-- test_stream.py           # SSE stream and route order tests
+|   |-- test_backoff.py          # Ingest backoff and rate limit tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
@@ -494,8 +496,16 @@ supply of real traffic without anyone driving it.
 
 All three are public and need no credentials. Choose which run with
 `INGEST_SOURCES` (default `usgs,weather`) and how often with
-`INGEST_INTERVAL_SECONDS`. Enable `github` with care: unauthenticated it allows
-roughly 60 requests per hour.
+`INGEST_INTERVAL_SECONDS`.
+
+A source that fails is skipped for a growing number of polls (2, 4, 8, capped at
+32) and returns to normal on its first success. Rate limiting is treated
+separately from ordinary failure: `429`, and the `403` with an exhausted
+`X-RateLimit-Remaining` that GitHub uses, are recognised as such, and a
+`Retry-After` in seconds is honoured over the local guess. Without this a 30
+second interval would keep hitting an exhausted GitHub quota around 120 times an
+hour to no purpose, so `github` is safe to enable but still worth a longer
+interval.
 
 Each event's `event_id` is derived from the upstream record's own identifier, so
 polling the same feed repeatedly re-sends unchanged records. Those arrive as
@@ -735,6 +745,7 @@ something to slip in here.
 | `ingest_events_duplicate_total{source}` | Already seen (409) |
 | `ingest_events_rejected_total{source}` | Refused for any other reason |
 | `ingest_failures_total{source}` | Fetches or publishes that raised |
+| `ingest_backoff_skips_total{source}` | Polls skipped while backing off |
 
 Labelled by `source`, which is safe here because the names come from a fixed
 dict in this repository rather than from anything upstream sends. Duplicates get
@@ -829,7 +840,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-108 unit tests covering schema validation, the Kafka producer, consumer processing and
+121 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
