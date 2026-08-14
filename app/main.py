@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.middleware import RequestIDFilter, RequestIDMiddleware
-from app.api.routes import dlq, events, health, metrics
+from app.api.routes import dlq, events, health, metrics, stream
 from app.config import get_settings
 from app.db.connection import dispose_engine
 from app.kafka.producer import producer as event_producer
@@ -36,6 +36,10 @@ app = FastAPI(title="Event Ingestion API", lifespan=lifespan)
 app.add_middleware(RequestIDMiddleware)
 
 app.include_router(health.router)
+# Before events.router on purpose. Routes match in registration order, and
+# events.router owns GET /events/{event_id}, so registering it first would make
+# /events/stream match that pattern and fail as an invalid UUID.
+app.include_router(stream.router)
 app.include_router(events.router)
 app.include_router(dlq.router)
 app.include_router(metrics.router)

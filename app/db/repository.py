@@ -112,6 +112,30 @@ class EventRepository:
             error_reason,
         )
 
+    async def list_events_after(self, last_id: int, limit: int = 100) -> list[Event]:
+        """Events with an id above the cursor, oldest first.
+
+        Paged by id rather than created_at because ids are strictly increasing
+        and unique, so a cursor can never skip or repeat a row. Two events
+        sharing a timestamp would make a created_at cursor ambiguous.
+        """
+        stmt = (
+            select(Event)
+            .where(Event.id > last_id)
+            .order_by(Event.id.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def latest_event_id(self) -> int:
+        """Highest id currently stored, or 0 when the table is empty.
+
+        Lets a new stream start from "now" instead of replaying history.
+        """
+        result = await self._session.execute(select(func.max(Event.id)))
+        return result.scalar_one() or 0
+
     async def list_dlq_events(
         self,
         event_type: str | None = None,

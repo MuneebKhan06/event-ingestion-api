@@ -91,6 +91,7 @@ event-ingestion-api/
 |   |       |-- events.py        # POST /events, GET /events, GET /events/{id}
 |   |       |-- dlq.py           # GET /dlq
 |   |       |-- metrics.py       # GET /metrics
+|   |       |-- stream.py        # GET /events/stream (SSE)
 |   |       |-- health.py        # GET /health
 |   |   |-- middleware.py        # Request correlation IDs
 |   |
@@ -148,6 +149,7 @@ event-ingestion-api/
 |   |-- test_simulate.py         # Duplicate-check CLI logic tests
 |   |-- test_request_id.py       # Correlation ID middleware tests
 |   |-- test_ingest.py           # Public API source parsing tests
+|   |-- test_stream.py           # SSE stream and route order tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
@@ -603,6 +605,30 @@ window after it is accepted.
 
 ---
 
+### `GET /events/stream`
+Server-Sent Events feed of events as they are persisted.
+
+```bash
+curl -N http://localhost:8000/events/stream
+curl -N "http://localhost:8000/events/stream?after=1200"   # resume from an id
+```
+
+Starts from the newest event unless `after` is given, so a fresh connection
+shows what is arriving now rather than replaying history. Frames are
+`data: {json}` with the same shape as `GET /events`; idle connections receive a
+`: keepalive` comment so proxies do not drop them.
+
+Paging is by `id` rather than `created_at`: ids are unique and strictly
+increasing, so a cursor cannot skip or repeat a row, whereas two events sharing
+a timestamp would make a time cursor ambiguous.
+
+It reads what the consumer has already written rather than tapping Kafka, so
+what a client sees is exactly what is durably stored. Each poll uses a
+short-lived database session rather than holding one open for the life of the
+connection, which would tie up a pooled connection per viewer.
+
+---
+
 ### `GET /dlq`
 List failed events, newest first.
 
@@ -786,7 +812,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-93 unit tests covering schema validation, the Kafka producer, consumer processing and
+103 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
