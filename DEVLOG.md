@@ -459,12 +459,63 @@ in the Kafka message.
 
 ---
 
+## Pass 14 — Real time: the stack feeds itself
+
+Up to here the pipeline only moved data when someone pushed a button. An
+`ingest` service now polls public APIs (USGS earthquakes, GitHub public events,
+Open-Meteo weather, all unauthenticated) and posts what it finds to the API over
+HTTP, so it goes through exactly the same validation and idempotency path a real
+client would rather than shortcutting into Kafka.
+
+The design decision that carries the most weight is the smallest: each event's
+`event_id` is derived with `uuid5` from the upstream record's own identifier.
+Feeds repeat unchanged records between polls, so re-polling produces genuine
+duplicates from real data. Decision 4 stops being an argument supported by tests
+and becomes something the system demonstrates every thirty seconds. It also
+means duplicates are the healthy steady state here, which is why the ingest
+metrics count them separately rather than as failures.
+
+Also added: `GET /events/stream` (SSE) so the real-time behaviour is observable;
+Prometheus counters for ingest on `:9200`, giving one endpoint per process;
+per source backoff; and bounded concurrent publishing.
+
+**Gotcha (routing):** `/events/stream` returned 422. `events.router` owns
+`GET /events/{event_id}` and was registered first, so "stream" was parsed as an
+event_id and rejected as an invalid UUID. Routes match in registration order.
+Fixed by registering the literal path first, with a test that resolves the path
+against the real router, since the endpoint never completes a response body and
+a normal request test hangs.
+
+**Gotcha (rate limiting):** `fetch_events` called `raise_for_status`, so every
+upstream failure landed in one `except` branch with the response headers already
+gone. GitHub refuses an over-quota unauthenticated caller with `403` and
+`X-RateLimit-Remaining: 0`, not `429`, so both are now recognised before the
+raise, and `Retry-After` in seconds is honoured over the local guess. A plain
+`403` is deliberately not treated as rate limiting: being forbidden for other
+reasons should not be quietly waited out. Only the integer seconds form of
+`Retry-After` is parsed; an HTTP date falls through to exponential backoff,
+which is a safe default rather than a wrong parse.
+
+Two lessons about verification, both worth more than the code they produced.
+
+`httpx` was only in `requirements-dev.txt`, while `Dockerfile.ingest` installs
+from `requirements.txt`. The image built cleanly and would have crashed on
+import the moment it ran. A successful build says nothing about a working
+service, and running the container is what caught it.
+
+The `return_exceptions=True` on the publish `gather` was tested by a case that
+did not exercise it. `publish_one` catches `Exception` around the request
+itself, so `gather` never sees one on that path, and the mutation check proved
+it: deleting `return_exceptions` changed nothing and all tests still passed. The
+test was passing for the wrong reason and would have let the safeguard be
+removed silently. Rewritten to drive a failure from outside the inner handler,
+after which the same mutation fails as it should. Without the mutation check
+this would have been reported as verified when it was not.
+
+---
+
 ## Known gaps
 
-- **Load test results are not measured.** The Locust scenarios parse and are
-  verified, but no run has been executed against a live stack, so the results
-  table in the README is intentionally empty rather than populated with invented
-  numbers.
 - **Load test numbers are single runs on a contended machine.** They are real
   and honestly reported, but Locust shares CPUs with the stack it measures and
   each level ran once. The anomalous 50-user result is called out in the README
@@ -475,5 +526,15 @@ in the Kafka message.
   the default is still on, so the out-of-the-box behaviour is unchanged and the
   anomaly seen in the load test would still reproduce. Measuring both modes
   under load would settle how much it actually costs; that hasn't been done.
-- **No schema registry.** Discussed in the README — event contracts are enforced
+- **No schema registry.** Discussed in the README, event contracts are enforced
   only at the API layer today.
+- **The integration tests never exercise the ingest poller.**
+  `docker-compose.test.yml` has no `ingest` service, so the poller is covered by
+  unit tests and by manual runs against the full stack, but nothing automated
+  checks it end to end the way the API and consumer are checked.
+- **The SSE stream has no cap on concurrent clients.** Each connection polls
+  Postgres once a second, so N open dashboards mean N pollers. Fine for one or
+  two, not something to leave unbounded on a shared deployment.
+- **Ingest publishes are bounded but not adaptive.** The concurrency limit is a
+  fixed number rather than a response to observed API latency, so a slow API is
+  answered with the same pressure as a fast one.
