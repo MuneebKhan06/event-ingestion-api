@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # process from the API and its counters live in a separate registry.
     consumer_metrics_port: int = 9100
 
+    # Ingest poller: pulls public APIs and posts them to the API over HTTP.
+    ingest_api_url: str = "http://localhost:8000"
+    ingest_sources: str = "usgs,weather"
+    ingest_interval_seconds: float = 30.0
+
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
         if self.database_url is None:
