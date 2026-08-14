@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     ingest_sources: str = "usgs,weather"
     ingest_interval_seconds: float = 30.0
     ingest_metrics_port: int = 9200
+    # Caps simultaneous publishes so one large feed cannot flood the API.
+    ingest_publish_concurrency: int = 8
 
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":

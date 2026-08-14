@@ -98,22 +98,46 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
         return tally
 
     tally["fetched"] = len(events)
-    for event in events:
-        try:
-            status = await publish(client, api_url, event)
-        except Exception as exc:
-            logger.warning("Publish failed for %s: %s", source.name, exc)
-            tally["failed"] += 1
-            continue
+
+    # Events are independent and Kafka partitions by event_id, so the order
+    # they are published in carries no meaning. Sending them one at a time was
+    # simply serialising a round trip per record: a 30 record GitHub poll cost
+    # 30 sequential requests. Concurrency is bounded so a large feed cannot
+    # open an unlimited number of connections against the API at once.
+    semaphore = asyncio.Semaphore(get_settings().ingest_publish_concurrency)
+
+    async def publish_one(event: dict) -> str:
+        """Return this event's outcome rather than mutating shared state.
+
+        Folding returned outcomes afterwards keeps the tally exact without a
+        lock, and makes the counting obvious to read.
+        """
+        async with semaphore:
+            try:
+                status = await publish(client, api_url, event)
+            except Exception as exc:
+                logger.warning("Publish failed for %s: %s", source.name, exc)
+                return "failed"
 
         if status == 202:
-            tally["accepted"] += 1
-        elif status == 409:
+            return "accepted"
+        if status == 409:
             # Expected: the feed repeats records between polls.
-            tally["duplicate"] += 1
+            return "duplicate"
+        logger.warning("Unexpected %s for %s event", status, source.name)
+        return "rejected"
+
+    # return_exceptions so one unexpected error cannot cancel the rest of the
+    # batch and silently drop events that would otherwise have been published.
+    outcomes = await asyncio.gather(
+        *(publish_one(event) for event in events), return_exceptions=True
+    )
+    for outcome in outcomes:
+        if isinstance(outcome, BaseException):
+            logger.warning("Publish task failed for %s: %s", source.name, outcome)
+            tally["failed"] += 1
         else:
-            tally["rejected"] += 1
-            logger.warning("Unexpected %s for %s event", status, source.name)
+            tally[outcome] += 1
 
     record(source.name, tally)
     logger.info(

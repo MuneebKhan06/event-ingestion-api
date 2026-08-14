@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from app.schemas.events import EventCreate
@@ -209,3 +211,123 @@ def test_every_source_series_exists_before_any_poll():
         if "source" in sample.labels
     }
     assert set(SOURCES) <= exposed
+
+
+# --------------------------------------------------------------------------
+# Bounded concurrent publishing
+# --------------------------------------------------------------------------
+
+
+class _ConcurrencyTrackingClient:
+    """Records how many publishes overlap, to prove the bound is real."""
+
+    def __init__(self, event_count: int, statuses=None, fail_at=None):
+        self._body = {
+            "features": [
+                {
+                    "id": f"id-{i}",
+                    "properties": {"place": "x", "mag": 1.0, "time": 1},
+                    "geometry": {"coordinates": [0, 0, 0]},
+                }
+                for i in range(event_count)
+            ]
+        }
+        self._statuses = list(statuses or [])
+        self._fail_at = fail_at
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self.posts = 0
+
+    async def get(self, _url, **_kwargs):
+        return _FakeResponse(json_body=self._body)
+
+    async def post(self, _url, **_kwargs):
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            # Yield control so overlapping requests actually interleave.
+            await asyncio.sleep(0)
+            index = self.posts
+            self.posts += 1
+            if self._fail_at is not None and index == self._fail_at:
+                raise RuntimeError("publish blew up")
+            status = self._statuses[index] if index < len(self._statuses) else 202
+            return _FakeResponse(status_code=status)
+        finally:
+            self.in_flight -= 1
+
+
+async def test_every_event_is_still_counted_under_concurrency():
+    client = _ConcurrencyTrackingClient(event_count=25)
+
+    tally = await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert tally["fetched"] == 25
+    assert tally["accepted"] == 25
+    counted = tally["accepted"] + tally["duplicate"] + tally["rejected"] + tally["failed"]
+    assert counted == tally["fetched"]
+
+
+async def test_concurrency_is_bounded():
+    """Unbounded gather would open one connection per record."""
+    from app.config import get_settings
+
+    limit = get_settings().ingest_publish_concurrency
+    client = _ConcurrencyTrackingClient(event_count=40)
+
+    await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert client.max_in_flight <= limit
+    assert client.posts == 40
+
+
+async def test_one_failing_publish_does_not_lose_the_rest():
+    """Without return_exceptions a single raise cancels the whole batch."""
+    client = _ConcurrencyTrackingClient(event_count=10, fail_at=3)
+
+    tally = await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert tally["failed"] == 1
+    assert tally["accepted"] == 9
+    assert client.posts == 10  # every event was still attempted
+
+
+async def test_mixed_outcomes_are_tallied_correctly():
+    client = _ConcurrencyTrackingClient(
+        event_count=6, statuses=[202, 409, 409, 202, 422, 202]
+    )
+
+    tally = await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert tally["accepted"] == 3
+    assert tally["duplicate"] == 2
+    assert tally["rejected"] == 1
+
+
+async def test_an_error_outside_the_inner_handler_does_not_abort_the_batch(monkeypatch):
+    """gather must collect exceptions rather than propagate the first one.
+
+    publish_one already catches Exception around the request itself, so a
+    failing request alone never reaches gather. This drives a failure from
+    outside that handler (semaphore acquisition) to prove return_exceptions is
+    doing real work and poll_once still returns a complete tally.
+    """
+
+    class _ExplodingSemaphore:
+        def __init__(self, _limit):
+            pass
+
+        async def __aenter__(self):
+            raise RuntimeError("semaphore unavailable")
+
+        async def __aexit__(self, *_exc_info):
+            return False
+
+    monkeypatch.setattr(asyncio, "Semaphore", _ExplodingSemaphore)
+    client = _ConcurrencyTrackingClient(event_count=5)
+
+    tally = await poll_once(client, SOURCES["usgs"], "http://api")
+
+    # Every event accounted for as failed, and no exception escaped.
+    assert tally["fetched"] == 5
+    assert tally["failed"] == 5

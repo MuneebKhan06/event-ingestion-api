@@ -507,6 +507,12 @@ second interval would keep hitting an exhausted GitHub quota around 120 times an
 hour to no purpose, so `github` is safe to enable but still worth a longer
 interval.
 
+Events within a poll are published concurrently up to
+`INGEST_PUBLISH_CONCURRENCY` (default 8). Order does not matter, since events
+are independent and Kafka partitions by `event_id`, but the bound does: a
+30 record feed would otherwise mean 30 sequential round trips, and an unbounded
+one would open a connection per record.
+
 Each event's `event_id` is derived from the upstream record's own identifier, so
 polling the same feed repeatedly re-sends unchanged records. Those arrive as
 duplicates and are dropped by the unique constraint, which means the idempotency
@@ -840,7 +846,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-121 unit tests covering schema validation, the Kafka producer, consumer processing and
+126 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
