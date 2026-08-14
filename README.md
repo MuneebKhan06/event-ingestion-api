@@ -65,6 +65,7 @@ Kafka Topic: events.dlq  +  dlq_events table
 | Kafka Consumer | Reads from Kafka, writes to PostgreSQL with idempotency |
 | Dead Letter Queue | Captures failed events for inspection and replay |
 | Kafka UI | Web console for browsing topics and messages (`:8080`) |
+| Ingest poller | Feeds the API from public APIs so the stack runs on real data |
 | Locust | Load testing — measures events/sec throughput |
 
 ---
@@ -115,6 +116,11 @@ event-ingestion-api/
 |       |-- metrics.py           # Prometheus counters
 |       |-- dlq.py               # Dead letter queue handler
 |
+|-- ingest/
+|   |-- __init__.py
+|   |-- main.py                  # Poll loop + graceful shutdown
+|   |-- sources.py               # Public API sources and parsers
+|
 |-- consumer/
 |   |-- __init__.py
 |   |-- main.py                  # Consumer entry point + graceful shutdown
@@ -141,6 +147,7 @@ event-ingestion-api/
 |   |-- test_replay.py           # DLQ replay selection tests
 |   |-- test_simulate.py         # Duplicate-check CLI logic tests
 |   |-- test_request_id.py       # Correlation ID middleware tests
+|   |-- test_ingest.py           # Public API source parsing tests
 |   |-- test_integration.py      # End-to-end vs real Kafka + Postgres
 |   |-- test_schemas.py          # Pydantic schema validation tests
 |
@@ -154,6 +161,7 @@ event-ingestion-api/
 |-- docker/
 |   |-- Dockerfile.api           # FastAPI app image (with HEALTHCHECK)
 |   |-- Dockerfile.consumer      # Consumer image
+|   |-- Dockerfile.ingest        # Public API poller image
 |
 |-- docker-compose.yml           # Full local stack
 |-- docker-compose.test.yml      # Infra-only stack for tests
@@ -469,7 +477,35 @@ Then read it back once the consumer has persisted it:
 curl http://localhost:8000/events/550e8400-e29b-41d4-a716-446655440000
 ```
 
-### 6. Send synthetic events
+### 6. Real data, automatically
+
+`docker-compose up -d` also starts an `ingest` service that polls public APIs
+and posts what it finds to `POST /events`, so the pipeline has a continuous
+supply of real traffic without anyone driving it.
+
+| Source | API | Event type |
+|---|---|---|
+| `usgs` | USGS earthquake feed (last hour) | `quake.detected` |
+| `github` | GitHub public events | `github.<action>` |
+| `weather` | Open-Meteo current conditions | `weather.sampled` |
+
+All three are public and need no credentials. Choose which run with
+`INGEST_SOURCES` (default `usgs,weather`) and how often with
+`INGEST_INTERVAL_SECONDS`. Enable `github` with care: unauthenticated it allows
+roughly 60 requests per hour.
+
+Each event's `event_id` is derived from the upstream record's own identifier, so
+polling the same feed repeatedly re-sends unchanged records. Those arrive as
+duplicates and are dropped by the unique constraint, which means the idempotency
+guarantee is exercised continuously by real data rather than only in tests.
+Watch it happen:
+
+```bash
+docker-compose logs -f ingest
+curl "http://localhost:8000/events?event_type=quake.detected&limit=5"
+```
+
+### 7. Send synthetic events
 
 ```bash
 python scripts/simulate_events.py --count 10
@@ -750,7 +786,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-81 unit tests covering schema validation, the Kafka producer, consumer processing and
+93 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.
@@ -779,7 +815,7 @@ constraint, where a mock could only ever confirm that we called it.
 ### Lint
 
 ```bash
-ruff check app/ consumer/ tests/ load_tests/ scripts/ alembic/
+ruff check app/ consumer/ ingest/ tests/ load_tests/ scripts/ alembic/
 ```
 
 ### Database migrations

@@ -189,6 +189,26 @@ services:
     # SIGTERM before Docker escalates to SIGKILL.
     stop_grace_period: 30s
 
+  # Polls public APIs and posts what it finds to the API, giving the stack a
+  # continuous supply of real traffic instead of hand-fed test events.
+  ingest:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ingest
+    container_name: eia-ingest
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    # Only HTTP settings here. Unlike api and consumer this service never opens
+    # a database or Kafka connection, so merging the shared app-env anchor would
+    # hand it credentials it has no use for.
+    environment:
+      INGEST_API_URL: http://api:8000
+      INGEST_SOURCES: usgs,weather
+      INGEST_INTERVAL_SECONDS: "30"
+      LOG_LEVEL: INFO
+
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
     container_name: eia-kafka-ui

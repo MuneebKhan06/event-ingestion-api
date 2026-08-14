@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ingest reads settings from app.config, so it needs app/ as well as its own
+# package. It never touches the database or Kafka directly.
+COPY app/ ./app/
+COPY ingest/ ./ingest/
+
+RUN useradd --create-home --uid 1000 appuser
+USER appuser
+
+# Exec form so the process is PID 1 and receives SIGTERM, which is what the
+# poll loop waits on to stop between polls rather than mid-request.
+CMD ["python", "-m", "ingest.main"]
