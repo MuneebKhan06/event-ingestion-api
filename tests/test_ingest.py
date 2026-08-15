@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app.api.middleware import _SAFE_REQUEST_ID
 from app.schemas.events import EventCreate
 from ingest.main import poll_once
 from ingest.sources import SOURCES, resolve, stable_event_id
@@ -331,3 +332,70 @@ async def test_an_error_outside_the_inner_handler_does_not_abort_the_batch(monke
     # Every event accounted for as failed, and no exception escaped.
     assert tally["fetched"] == 5
     assert tally["failed"] == 5
+
+
+# --------------------------------------------------------------------------
+# Correlation IDs
+# --------------------------------------------------------------------------
+
+
+def test_poll_id_satisfies_the_apis_own_validation():
+    """Imports the API's real pattern so the two cannot drift apart.
+
+    The middleware replaces any client id outside [A-Za-z0-9._:-]{1,64} with a
+    generated UUID. If this format stopped matching, correlation would be lost
+    silently: requests would still succeed and the ids would simply stop
+    joining up.
+    """
+    from ingest.main import poll_correlation_id
+
+    for name in SOURCES:
+        assert _SAFE_REQUEST_ID.match(poll_correlation_id(name))
+
+
+def test_poll_ids_are_unique_per_poll():
+    from ingest.main import poll_correlation_id
+
+    assert poll_correlation_id("usgs") != poll_correlation_id("usgs")
+
+
+def test_poll_id_names_its_source():
+    """So a log line says which feed it came from without a lookup."""
+    from ingest.main import poll_correlation_id
+
+    assert poll_correlation_id("weather").startswith("ingest-weather-")
+
+
+class _HeaderCapturingClient(_FakeClient):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.seen_headers = []
+
+    async def post(self, _url, **kwargs):
+        self.seen_headers.append(kwargs.get("headers"))
+        return await super().post(_url, **kwargs)
+
+
+async def test_every_publish_carries_the_polls_correlation_id():
+    client = _HeaderCapturingClient(
+        get_response=_FakeResponse(json_body=USGS_BODY), post_statuses=[202]
+    )
+
+    await poll_once(client, SOURCES["usgs"], "http://api")
+
+    assert client.seen_headers
+    ids = {h["X-Request-ID"] for h in client.seen_headers}
+    assert len(ids) == 1  # one id shared across the batch
+    assert _SAFE_REQUEST_ID.match(next(iter(ids)))
+
+
+async def test_separate_polls_use_separate_ids():
+    ids = set()
+    for _ in range(2):
+        client = _HeaderCapturingClient(
+            get_response=_FakeResponse(json_body=USGS_BODY), post_statuses=[202]
+        )
+        await poll_once(client, SOURCES["usgs"], "http://api")
+        ids.add(client.seen_headers[0]["X-Request-ID"])
+
+    assert len(ids) == 2

@@ -728,7 +728,12 @@ handling that request is prefixed with it:
 INFO:app.api.routes.events:[trace-me-abc] Published event 47d96ce5-... to events.raw
 ```
 
-Send your own to correlate across services; otherwise one is generated.
+Send your own to correlate across services; otherwise one is generated. The
+ingest poller does this: every request in one poll carries the same
+`ingest-<source>-<hex>` id, so a poll and the API log lines it produced join
+with one grep. Note that the duplicate path (409) logs nothing by design, since
+a steady state poller re-sending unchanged records would otherwise flood the
+log; the accepted and failed paths both carry the id.
 
 ```bash
 curl -H "X-Request-ID: my-trace-001" http://localhost:8000/events/<id>
@@ -852,7 +857,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-130 unit tests covering schema validation, the Kafka producer, consumer processing and
+135 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

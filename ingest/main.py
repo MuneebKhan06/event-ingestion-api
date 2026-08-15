@@ -10,6 +10,7 @@ import logging
 import signal
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import httpx
@@ -70,8 +71,30 @@ async def fetch_events(client: httpx.AsyncClient, source: Source) -> list[dict]:
     return source.parse(response.json())
 
 
-async def publish(client: httpx.AsyncClient, api_url: str, event: dict) -> int:
-    response = await client.post(f"{api_url}/events", json=event, timeout=20.0)
+def poll_correlation_id(source_name: str) -> str:
+    """Identifier shared by every request in one poll.
+
+    Per poll rather than per event: a poll is the unit of work you would
+    actually investigate ("what happened at 09:31 for usgs"), and one id
+    covering the whole batch lets a single grep join the ingest side to every
+    API log line it produced. Per event ids would be finer but would make the
+    common question harder to answer.
+
+    The API validates client supplied ids and falls back to its own UUID for
+    anything that does not match, so this format has to satisfy that pattern or
+    the correlation is silently lost. A test asserts it against the API's own
+    regex rather than a copy.
+    """
+    return f"ingest-{source_name}-{uuid.uuid4().hex[:12]}"
+
+
+async def publish(
+    client: httpx.AsyncClient, api_url: str, event: dict, correlation_id: str | None = None
+) -> int:
+    headers = {"X-Request-ID": correlation_id} if correlation_id else None
+    response = await client.post(
+        f"{api_url}/events", json=event, headers=headers, timeout=20.0
+    )
     return response.status_code
 
 
@@ -98,6 +121,7 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
         return tally
 
     tally["fetched"] = len(events)
+    correlation_id = poll_correlation_id(source.name)
 
     # Events are independent and Kafka partitions by event_id, so the order
     # they are published in carries no meaning. Sending them one at a time was
@@ -114,7 +138,7 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
         """
         async with semaphore:
             try:
-                status = await publish(client, api_url, event)
+                status = await publish(client, api_url, event, correlation_id)
             except Exception as exc:
                 logger.warning("Publish failed for %s: %s", source.name, exc)
                 return "failed"
@@ -140,9 +164,12 @@ async def poll_once(client: httpx.AsyncClient, source: Source, api_url: str) -> 
             tally[outcome] += 1
 
     record(source.name, tally)
+    # The id is logged here too, so this line and the API's own
+    # "[<id>] Published event ..." lines can be joined by a single grep.
     logger.info(
-        "%s: fetched=%d accepted=%d duplicate=%d rejected=%d failed=%d",
+        "%s [%s]: fetched=%d accepted=%d duplicate=%d rejected=%d failed=%d",
         source.name,
+        correlation_id,
         tally["fetched"],
         tally["accepted"],
         tally["duplicate"],

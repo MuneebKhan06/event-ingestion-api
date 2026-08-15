@@ -514,6 +514,39 @@ this would have been reported as verified when it was not.
 
 ---
 
+## Pass 15 — Small gaps closed after the real time work
+
+Capped concurrent SSE clients (`STREAM_MAX_CLIENTS`, default 20). Streams are
+not just sockets: each one polls Postgres every second, so connections multiply
+database load. The slot is released in a `finally`, since releasing only on
+clean completion would leak one on every disconnect, and disconnects are the
+normal case for a dashboard. Left unfixed that would slowly close the endpoint
+to everyone with no recovery short of a restart.
+
+Added integration coverage for ingest. The design's central claim is that
+deterministic uuid5 ids make a re-poll store nothing new, and that had only ever
+been checked against a mock, which will "deduplicate" whatever it is told to.
+Now checked against the real unique constraint, plus a test that every parser's
+output survives the real column types, plus one that fetches a live upstream
+feed and skips rather than fails when the network is unavailable.
+
+The ingest poller now sends `X-Request-ID` per poll. The correlation middleware
+already existed and honoured client ids, but the API's largest client was not
+using it. A test asserts the id format against the middleware's own regex,
+imported rather than copied, because a drifting format would lose correlation
+silently: requests would keep succeeding and the ids would simply stop joining.
+
+**Worth recording:** the first live check looked like a failure. Grepping the
+API logs for the poller's ids found nothing. The cause was not correlation but
+the steady state: every poll was `duplicate=7`, and the 409 path increments a
+counter and raises without logging, deliberately, so a poller re-sending
+unchanged records does not flood the log. Confirmed the mechanism by posting an
+event that is actually accepted, which logged
+`[ingest-usgs-manualcheck] Published event ...`. The accepted and failed paths
+carry the id; duplicates are silent on purpose.
+
+---
+
 ## Known gaps
 
 - **Load test numbers are single runs on a contended machine.** They are real
