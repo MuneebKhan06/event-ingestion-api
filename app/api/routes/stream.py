@@ -12,9 +12,10 @@ import json
 import logging
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
+from app.config import get_settings
 from app.db.connection import async_session_factory
 from app.db.repository import EventRepository
 from app.schemas.events import EventResponse
@@ -23,12 +24,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 POLL_SECONDS = 1.0
+
+# Live count of open streams. Each one polls the database every POLL_SECONDS,
+# so connections are a database load multiplier, not just sockets: twenty idle
+# dashboards mean twenty queries a second against Postgres forever. Refusing
+# the twenty first is better than degrading ingestion for everyone.
+_open_streams = 0
 # Caps how much one connection can pull per poll, so a client attaching to a
 # large backlog drains it steadily instead of in a single huge read.
 MAX_BATCH = 100
 
 
 async def _event_frames(after: int | None) -> AsyncIterator[str]:
+    global _open_streams
+
+    _open_streams += 1
+    try:
+        async for frame in _poll_loop(after):
+            yield frame
+    finally:
+        # In a finally so a disconnect, an error and a normal close all release
+        # the slot. Leaking one on any path would eventually close the endpoint
+        # to everybody with no way back short of a restart.
+        _open_streams -= 1
+
+
+async def _poll_loop(after: int | None) -> AsyncIterator[str]:
     async with async_session_factory() as session:
         cursor = after if after is not None else await EventRepository(session).latest_event_id()
 
@@ -68,6 +89,15 @@ async def stream_events(
     Reads what the consumer has already written rather than tapping Kafka, so
     what a client sees here is exactly what is durably stored.
     """
+    # Checked before the response starts, so a refused client gets a normal
+    # 503 it can act on rather than an event-stream that opens and dies.
+    limit = get_settings().stream_max_clients
+    if _open_streams >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Too many open event streams (limit {limit}); retry shortly.",
+        )
+
     return StreamingResponse(
         _event_frames(after),
         media_type="text/event-stream",

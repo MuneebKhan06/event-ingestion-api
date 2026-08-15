@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # Caps simultaneous publishes so one large feed cannot flood the API.
     ingest_publish_concurrency: int = 8
 
+    # Each open SSE stream polls the database once a second, so this bounds
+    # database load rather than just connection count.
+    stream_max_clients: int = 20
+
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
         if self.database_url is None:

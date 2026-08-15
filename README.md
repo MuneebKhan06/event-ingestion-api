@@ -644,6 +644,12 @@ what a client sees is exactly what is durably stored. Each poll uses a
 short-lived database session rather than holding one open for the life of the
 connection, which would tie up a pooled connection per viewer.
 
+Concurrent streams are capped by `STREAM_MAX_CLIENTS` (default 20), and a
+client over the limit gets `503` before the response starts rather than a
+stream that opens and dies. The cap exists because every open connection polls
+the database once a second, so streams multiply database load rather than just
+consuming sockets.
+
 ---
 
 ### `GET /dlq`
@@ -846,7 +852,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-126 unit tests covering schema validation, the Kafka producer, consumer processing and
+130 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import create_autospec
 
 import pytest
+from fastapi import HTTPException
 
 import app.api.routes.stream as stream_module
 from app.db.models import Event
@@ -156,3 +157,64 @@ async def test_batch_size_is_bounded(repository):
 def test_poll_interval_is_bounded():
     assert 0 < stream_module.POLL_SECONDS <= 5
     assert asyncio  # imported for the generator's sleep
+
+
+# --------------------------------------------------------------------------
+# Concurrent client cap
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_open_streams():
+    """Counter is module state, so leaking it between tests would cascade."""
+    stream_module._open_streams = 0
+    yield
+    stream_module._open_streams = 0
+
+
+async def test_refuses_new_streams_past_the_limit(monkeypatch):
+    """Each stream is a database poller, so the cap protects Postgres."""
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "stream_max_clients", 2)
+    stream_module._open_streams = 2
+
+    with pytest.raises(HTTPException) as exc_info:
+        await stream_module.stream_events(after=0)
+
+    assert exc_info.value.status_code == 503
+    assert "Too many open event streams" in exc_info.value.detail
+
+
+async def test_allows_a_stream_while_below_the_limit(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "stream_max_clients", 2)
+    stream_module._open_streams = 1
+
+    response = await stream_module.stream_events(after=0)
+
+    assert response.media_type == "text/event-stream"
+
+
+async def test_open_streams_is_counted_and_released(repository):
+    repository.list_events_after.return_value = []
+    assert stream_module._open_streams == 0
+
+    generator = stream_module._event_frames(after=0)
+    await generator.__anext__()
+    assert stream_module._open_streams == 1
+
+    await generator.aclose()
+    assert stream_module._open_streams == 0
+
+
+async def test_slot_is_released_even_when_the_stream_errors(repository):
+    """A leaked slot would slowly close the endpoint with no way back."""
+    repository.list_events_after.side_effect = RuntimeError("database gone")
+
+    generator = stream_module._event_frames(after=0)
+    with pytest.raises(RuntimeError):
+        await generator.__anext__()
+
+    assert stream_module._open_streams == 0
