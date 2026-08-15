@@ -650,6 +650,10 @@ stream that opens and dies. The cap exists because every open connection polls
 the database once a second, so streams multiply database load rather than just
 consuming sockets.
 
+That poll interval carries a small random jitter. Without it every client
+settles into the same rhythm and their queries arrive together in bursts with
+idle gaps between, which gets worse with each client added.
+
 ---
 
 ### `GET /dlq`
@@ -857,7 +861,7 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-135 unit tests covering schema validation, the Kafka producer, consumer processing and
+138 unit tests covering schema validation, the Kafka producer, consumer processing and
 DLQ routing, the DLQ handler and idempotency check, DLQ replay selection, and the API endpoints
 (including the degraded-health path). They use mocks throughout, so no running
 Kafka or PostgreSQL is required.

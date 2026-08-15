@@ -10,6 +10,7 @@ poll therefore opens a short-lived session and returns it immediately.
 import asyncio
 import json
 import logging
+import random
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -25,6 +26,13 @@ router = APIRouter()
 
 POLL_SECONDS = 1.0
 
+# Clients that all sleep exactly POLL_SECONDS settle into the same rhythm, so
+# their queries arrive together in bursts with idle gaps between. Spreading the
+# interval slightly lets connections drift apart and keeps the load even. Small
+# effect at twenty clients, but it costs nothing and the alternative gets worse
+# with every client added.
+JITTER_RANGE = (0.85, 1.15)
+
 # Live count of open streams. Each one polls the database every POLL_SECONDS,
 # so connections are a database load multiplier, not just sockets: twenty idle
 # dashboards mean twenty queries a second against Postgres forever. Refusing
@@ -33,6 +41,11 @@ _open_streams = 0
 # Caps how much one connection can pull per poll, so a client attaching to a
 # large backlog drains it steadily instead of in a single huge read.
 MAX_BATCH = 100
+
+
+def _next_delay() -> float:
+    """POLL_SECONDS with jitter, so concurrent streams do not synchronise."""
+    return POLL_SECONDS * random.uniform(*JITTER_RANGE)
 
 
 async def _event_frames(after: int | None) -> AsyncIterator[str]:
@@ -68,7 +81,7 @@ async def _poll_loop(after: int | None) -> AsyncIterator[str]:
                 # a connection that is simply idle rather than broken.
                 yield ": keepalive\n\n"
 
-            await asyncio.sleep(POLL_SECONDS)
+            await asyncio.sleep(_next_delay())
     except asyncio.CancelledError:
         # Normal: the client navigated away or closed the tab. Nothing failed,
         # so this must not surface as an error.

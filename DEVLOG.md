@@ -536,6 +536,11 @@ using it. A test asserts the id format against the middleware's own regex,
 imported rather than copied, because a drifting format would lose correlation
 silently: requests would keep succeeding and the ids would simply stop joining.
 
+Finally, the SSE poll interval got a small jitter. Every client sleeping
+exactly one second meant they drifted into lockstep and their queries arrived
+as bursts rather than spread out, which the client cap makes more likely rather
+than less. Cheap to fix and it degrades gracefully instead of sharply.
+
 **Worth recording:** the first live check looked like a failure. Grepping the
 API logs for the poller's ids found nothing. The cause was not correlation but
 the steady state: every poll was `duplicate=7`, and the 409 path increments a

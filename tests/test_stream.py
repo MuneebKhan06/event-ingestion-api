@@ -218,3 +218,37 @@ async def test_slot_is_released_even_when_the_stream_errors(repository):
         await generator.__anext__()
 
     assert stream_module._open_streams == 0
+
+
+# --------------------------------------------------------------------------
+# Poll jitter
+# --------------------------------------------------------------------------
+
+
+def test_delay_stays_within_the_jitter_bounds():
+    low, high = stream_module.JITTER_RANGE
+    delays = [stream_module._next_delay() for _ in range(200)]
+
+    assert all(
+        stream_module.POLL_SECONDS * low <= d <= stream_module.POLL_SECONDS * high
+        for d in delays
+    )
+
+
+def test_delays_actually_vary():
+    """A constant delay is the bug: clients would poll in lockstep.
+
+    Twenty streams sleeping the same fixed interval means twenty queries
+    arriving together every second, then silence, rather than load spread out.
+    """
+    delays = {stream_module._next_delay() for _ in range(50)}
+
+    assert len(delays) > 1
+
+
+def test_jitter_is_centred_near_the_nominal_interval():
+    """Jitter must spread the polls, not quietly change the poll rate."""
+    delays = [stream_module._next_delay() for _ in range(500)]
+    mean = sum(delays) / len(delays)
+
+    assert abs(mean - stream_module.POLL_SECONDS) < stream_module.POLL_SECONDS * 0.05
