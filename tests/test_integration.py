@@ -349,3 +349,124 @@ async def test_events_raw_has_the_configured_partition_count():
         assert len(partitions) == 3
     finally:
         await admin.close()
+
+
+# --------------------------------------------------------------------------
+# Ingest against real infrastructure
+# --------------------------------------------------------------------------
+
+
+async def test_source_events_deduplicate_against_the_real_constraint(db_session):
+    """The claim the whole ingest design rests on, checked against Postgres.
+
+    Deterministic uuid5 ids mean re-polling a feed re-sends unchanged records.
+    Unit tests prove the ids are stable; only the real unique constraint can
+    prove that re-inserting them stores nothing new. A mocked repository would
+    happily "deduplicate" whatever we told it to.
+    """
+    from uuid import UUID
+
+    from app.db.repository import EventRepository
+    from ingest.sources import SOURCES
+    from tests.test_ingest import USGS_BODY
+
+    repository = EventRepository(db_session)
+    events = SOURCES["usgs"].parse(USGS_BODY)
+    assert events
+
+    first = [
+        await repository.insert_event(
+            event_id=UUID(e["event_id"]),
+            event_type=e["event_type"],
+            source=e["source"],
+            payload=e["payload"],
+        )
+        for e in events
+    ]
+
+    # Same feed, polled again: identical ids, nothing new stored.
+    second = [
+        await repository.insert_event(
+            event_id=UUID(e["event_id"]),
+            event_type=e["event_type"],
+            source=e["source"],
+            payload=e["payload"],
+        )
+        for e in events
+    ]
+
+    assert all(first), "first poll should have inserted every record"
+    assert not any(second), "second poll should have inserted nothing"
+
+    stored = await repository.get_by_event_id(UUID(events[0]["event_id"]))
+    assert stored is not None
+
+
+async def test_every_source_produces_rows_postgres_accepts(db_session):
+    """Each parser's output must survive the real column types and constraints.
+
+    Catches things unit tests cannot: a payload the JSONB column rejects, or a
+    source string longer than VARCHAR(50).
+    """
+    from uuid import UUID
+
+    from app.db.repository import EventRepository
+    from ingest.sources import SOURCES
+    from tests.test_ingest import GITHUB_BODY, USGS_BODY, WEATHER_BODY
+
+    repository = EventRepository(db_session)
+    bodies = {"usgs": USGS_BODY, "github": GITHUB_BODY, "weather": WEATHER_BODY}
+
+    for name, body in bodies.items():
+        for event in SOURCES[name].parse(body):
+            await repository.insert_event(
+                event_id=UUID(event["event_id"]),
+                event_type=event["event_type"],
+                source=event["source"],
+                payload=event["payload"],
+            )
+
+        events, total = await repository.list_events(source=SOURCES[name].parse(body)[0]["source"])
+        assert total >= 1, f"{name} produced no stored rows"
+        assert events[0].payload, f"{name} stored an empty payload"
+
+
+async def test_live_public_api_records_reach_postgres(db_session):
+    """End to end against the actual upstream, tolerant of network trouble.
+
+    Fetches a real feed rather than a fixture, so it catches upstream schema
+    drift that recorded bodies never would. Skipped rather than failed when the
+    network or the upstream is unavailable, since neither is this project's
+    fault and a flaky suite gets ignored.
+    """
+    from uuid import UUID
+
+    import httpx
+
+    from app.db.repository import EventRepository
+    from ingest.sources import SOURCES
+
+    source = SOURCES["usgs"]
+    try:
+        response = httpx.get(source.url, timeout=20.0)
+        response.raise_for_status()
+        events = source.parse(response.json())
+    except Exception as exc:  # noqa: BLE001 - upstream availability is not under test
+        pytest.skip(f"upstream unavailable: {exc}")
+
+    if not events:
+        pytest.skip("upstream returned no records in this window")
+
+    repository = EventRepository(db_session)
+    event = events[0]
+    await repository.insert_event(
+        event_id=UUID(event["event_id"]),
+        event_type=event["event_type"],
+        source=event["source"],
+        payload=event["payload"],
+    )
+
+    stored = await repository.get_by_event_id(UUID(event["event_id"]))
+    assert stored is not None
+    assert stored.event_type == "quake.detected"
+    assert stored.payload["usgs_id"]

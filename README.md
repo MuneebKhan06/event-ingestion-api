@@ -859,7 +859,7 @@ Kafka or PostgreSQL is required.
 
 ### Integration tests
 
-A further 6 tests exercise real Kafka and PostgreSQL rather than mocks —
+A further 9 tests exercise real Kafka and PostgreSQL rather than mocks —
 `docker-compose.test.yml` brings up the infrastructure only, on shifted ports
 (`9093`/`5433`) so it can run alongside the dev stack:
 
