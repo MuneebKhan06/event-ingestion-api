@@ -1,0 +1,39 @@
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.step h2 {
+  margin-bottom: 6px;
+}
+
+.step p {
+  flex: 1;
+  margin: 0 0 12px;
+  color: var(--text-muted);
+}
+
+.step a {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}

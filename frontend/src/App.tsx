@@ -1,5 +1,6 @@
 import { PageHeader } from "./components/PageHeader";
 import { Sidebar } from "./components/Sidebar";
+import { Overview } from "./pages/Overview";
 import { useRoute, type Route } from "./router";
 
 interface Screen {
@@ -64,7 +65,11 @@ export function App() {
         <PageHeader title={screen.title} stage={screen.stage}>
           {screen.intro}
         </PageHeader>
-        <div className="card empty">This screen is on the plan and arrives in a later step.</div>
+        {route === "overview" ? (
+          <Overview />
+        ) : (
+          <div className="card empty">This screen is on the plan and arrives in a later step.</div>
+        )}
       </main>
     </div>
   );
