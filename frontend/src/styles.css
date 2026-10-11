@@ -196,6 +196,39 @@ pre {
   gap: 16px;
 }
 
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--surface-muted);
+}
+
+.btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
 .empty {
   padding: 28px;
   text-align: center;

@@ -74,3 +74,11 @@ cd frontend
 npm install
 npm run dev        # http://localhost:5173, expects the compose stack on its default ports
 ```
+
+If a backend is published on a different port, point the proxy at it:
+
+```bash
+API_URL=http://localhost:8001 npm run dev
+```
+
+`CONSUMER_METRICS_URL` and `INGEST_METRICS_URL` do the same for `:9100` and `:9200`.

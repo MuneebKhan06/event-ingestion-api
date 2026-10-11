@@ -1,4 +1,5 @@
 import { HealthPanel } from "../components/HealthPanel";
+import { LiveFeed } from "../components/LiveFeed";
 import { href } from "../router";
 import "./Overview.css";
 
@@ -40,6 +41,7 @@ export function Overview() {
       </section>
 
       <HealthPanel />
+      <LiveFeed limit={8} compact />
     </div>
   );
 }

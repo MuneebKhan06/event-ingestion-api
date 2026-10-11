@@ -1,6 +1,7 @@
 import { PageHeader } from "./components/PageHeader";
 import { Sidebar } from "./components/Sidebar";
 import { Overview } from "./pages/Overview";
+import { Stream } from "./pages/Stream";
 import { useRoute, type Route } from "./router";
 
 interface Screen {
@@ -67,6 +68,8 @@ export function App() {
         </PageHeader>
         {route === "overview" ? (
           <Overview />
+        ) : route === "stream" ? (
+          <Stream />
         ) : (
           <div className="card empty">This screen is on the plan and arrives in a later step.</div>
         )}
