@@ -26,14 +26,14 @@ that part is doing and why it was built that way.
 
 ## Seven day schedule
 
-### Day 1: Foundations
+### Day 1: Foundations (done)
 - Scaffold Vite, React and TypeScript under `frontend/`
 - Typed API client that mirrors `app/schemas/events.py` and captures `X-Request-ID`
 - App shell with sidebar navigation and theme tokens
 - Health panel polling `GET /health`
 - Live stream hook and feed on `GET /events/stream`
 
-### Day 2: Events explorer
+### Day 2: Events explorer (done)
 - Table over `GET /events` with `event_type`, `source`, `since`, `until` filters
 - Offset pagination driven by `total`, `limit`, `offset`
 - Detail drawer for `GET /events/{event_id}` with formatted payload

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type ApiResult } from "../api/client";
 import type { EventPage } from "../api/types";
+import { EventDrawer } from "../components/EventDrawer";
 import { EventFilters, type FilterValues } from "../components/EventFilters";
 import { EventTable } from "../components/EventTable";
 import { PAGE_SIZES, Pagination } from "../components/Pagination";
@@ -49,6 +50,9 @@ export function Events() {
     // queryKey stands in for the filters object, which is rebuilt each render.
   }, [queryKey]);
 
+  const selected = params.get("event");
+  const closeDrawer = useCallback(() => setParams({ event: undefined }), [setParams]);
+
   const page = result?.data;
   const filtered = FILTER_KEYS.some((key) => params.get(key));
 
@@ -86,7 +90,7 @@ export function Events() {
         <div className="empty">Loading events…</div>
       ) : page && page.events.length > 0 ? (
         <>
-          <EventTable events={page.events} />
+          <EventTable events={page.events} onSelect={(event) => setParams({ event: event.event_id })} />
           <Pagination
             total={page.total}
             limit={limit}
@@ -116,6 +120,7 @@ export function Events() {
       ) : (
         <div className="empty">No events stored yet. Send one, or wait for the ingest poller.</div>
       )}
+      {selected && <EventDrawer eventId={selected} onClose={closeDrawer} />}
     </section>
   );
 }

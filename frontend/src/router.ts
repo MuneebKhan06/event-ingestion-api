@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // Hash routing keeps the build servable from any static host or a plain nginx
 // location with no rewrite rules, which matters for the Day 7 Docker image.
@@ -26,6 +26,8 @@ export function useRoute(): Route {
 
 export const href = (route: Route) => `#/${route}`;
 
+const readHashParams = () => new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+
 /**
  * Query parameters carried in the hash, e.g. #/events?source=usgs.
  *
@@ -33,17 +35,18 @@ export const href = (route: Route) => `#/${route}`;
  * survives a reload and can be shared as a link during a demo.
  */
 export function useHashParams(): [URLSearchParams, (next: Record<string, string | undefined>) => void] {
-  const read = () => new URLSearchParams(window.location.hash.split("?")[1] ?? "");
-  const [params, setParams] = useState(read);
+  const [params, setParams] = useState(readHashParams);
 
   useEffect(() => {
-    const onChange = () => setParams(read());
+    const onChange = () => setParams(readHashParams());
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
 
-  const update = (next: Record<string, string | undefined>) => {
-    const merged = read();
+  // Stable across renders, so callers can hand it to effects and memoised
+  // callbacks without resubscribing every time.
+  const update = useCallback((next: Record<string, string | undefined>) => {
+    const merged = readHashParams();
     for (const [key, value] of Object.entries(next)) {
       if (value === undefined || value === "") merged.delete(key);
       else merged.set(key, value);
@@ -51,7 +54,7 @@ export function useHashParams(): [URLSearchParams, (next: Record<string, string 
     const route = window.location.hash.replace(/^#\/?/, "").split("?")[0] || "overview";
     const query = merged.toString();
     window.location.hash = `/${route}${query ? `?${query}` : ""}`;
-  };
+  }, []);
 
   return [params, update];
 }
