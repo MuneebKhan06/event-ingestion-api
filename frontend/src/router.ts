@@ -25,3 +25,33 @@ export function useRoute(): Route {
 }
 
 export const href = (route: Route) => `#/${route}`;
+
+/**
+ * Query parameters carried in the hash, e.g. #/events?source=usgs.
+ *
+ * Filters live here rather than in component state so a filtered view
+ * survives a reload and can be shared as a link during a demo.
+ */
+export function useHashParams(): [URLSearchParams, (next: Record<string, string | undefined>) => void] {
+  const read = () => new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+  const [params, setParams] = useState(read);
+
+  useEffect(() => {
+    const onChange = () => setParams(read());
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+
+  const update = (next: Record<string, string | undefined>) => {
+    const merged = read();
+    for (const [key, value] of Object.entries(next)) {
+      if (value === undefined || value === "") merged.delete(key);
+      else merged.set(key, value);
+    }
+    const route = window.location.hash.replace(/^#\/?/, "").split("?")[0] || "overview";
+    const query = merged.toString();
+    window.location.hash = `/${route}${query ? `?${query}` : ""}`;
+  };
+
+  return [params, update];
+}

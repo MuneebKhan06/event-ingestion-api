@@ -203,6 +203,11 @@ pre {
   margin: 0;
 }
 
+.request-meta {
+  margin-left: auto;
+  font-size: 12px;
+}
+
 .grid {
   display: grid;
   gap: 16px;
@@ -233,6 +238,17 @@ pre {
 
 .btn:hover {
   background: var(--surface-muted);
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--accent);
+  filter: brightness(1.08);
 }
 
 .btn-quiet {
