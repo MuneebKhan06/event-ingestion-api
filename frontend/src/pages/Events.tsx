@@ -3,9 +3,9 @@ import { api, ApiError, type ApiResult } from "../api/client";
 import type { EventPage } from "../api/types";
 import { EventFilters, type FilterValues } from "../components/EventFilters";
 import { EventTable } from "../components/EventTable";
+import { PAGE_SIZES, Pagination } from "../components/Pagination";
 import { useHashParams } from "../router";
 
-const PAGE_SIZE = 25;
 const FILTER_KEYS = ["event_type", "source", "since", "until"] as const;
 
 // Seeded with what the bundled sources and the README examples produce, then
@@ -18,7 +18,10 @@ export function Events() {
   const filters: FilterValues = Object.fromEntries(
     FILTER_KEYS.map((key) => [key, params.get(key) ?? undefined]),
   );
-  const filterKey = FILTER_KEYS.map((key) => params.get(key) ?? "").join("|");
+  const requestedLimit = Number(params.get("limit"));
+  const limit = PAGE_SIZES.includes(requestedLimit) ? requestedLimit : PAGE_SIZES[0];
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const queryKey = [...FILTER_KEYS.map((key) => params.get(key) ?? ""), limit, offset].join("|");
 
   const [result, setResult] = useState<ApiResult<EventPage> | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -30,7 +33,7 @@ export function Events() {
     let cancelled = false;
     setLoading(true);
     api
-      .listEvents({ ...filters, limit: PAGE_SIZE })
+      .listEvents({ ...filters, limit, offset })
       .then((res) => {
         if (cancelled) return;
         setResult(res);
@@ -43,8 +46,8 @@ export function Events() {
     return () => {
       cancelled = true;
     };
-    // filterKey stands in for the filters object, which is rebuilt each render.
-  }, [filterKey]);
+    // queryKey stands in for the filters object, which is rebuilt each render.
+  }, [queryKey]);
 
   const page = result?.data;
   const filtered = FILTER_KEYS.some((key) => params.get(key));
@@ -53,7 +56,10 @@ export function Events() {
     <section className="card">
       <EventFilters
         values={filters}
-        onChange={(next) => setParams(Object.fromEntries(FILTER_KEYS.map((key) => [key, next[key]])))}
+        onChange={(next) =>
+          // A new filter changes what page 3 even means, so start from the top.
+          setParams({ ...Object.fromEntries(FILTER_KEYS.map((key) => [key, next[key]])), offset: undefined })
+        }
         knownTypes={[...knownTypes].sort()}
         knownSources={[...knownSources].sort()}
       />
@@ -79,7 +85,32 @@ export function Events() {
       ) : loading && !page ? (
         <div className="empty">Loading events…</div>
       ) : page && page.events.length > 0 ? (
-        <EventTable events={page.events} />
+        <>
+          <EventTable events={page.events} />
+          <Pagination
+            total={page.total}
+            limit={limit}
+            offset={offset}
+            onChange={(nextOffset, nextLimit) =>
+              setParams({
+                offset: nextOffset > 0 ? String(nextOffset) : undefined,
+                limit: nextLimit !== PAGE_SIZES[0] ? String(nextLimit) : undefined,
+              })
+            }
+          />
+          <p className="muted pagination-note">
+            Offset pagination over a newest first list: events that arrive while you browse push older rows
+            onto the next page. The live stream avoids this by resuming from an id (<code>?after=</code>)
+            instead of a position.
+          </p>
+        </>
+      ) : page && offset > 0 ? (
+        <div className="empty">
+          This page is past the end of the results.{" "}
+          <button className="btn" onClick={() => setParams({ offset: undefined })}>
+            Back to page 1
+          </button>
+        </div>
       ) : filtered ? (
         <div className="empty">Nothing matches these filters. Type and source must match exactly.</div>
       ) : (

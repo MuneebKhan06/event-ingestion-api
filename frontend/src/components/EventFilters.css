@@ -1,6 +1,8 @@
 .filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
+  /* Sized from the card's own width, not the viewport: the sidebar takes a
+     fixed share, so a viewport breakpoint would overflow before it fired. */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   align-items: end;
   gap: 10px 12px;
   margin-bottom: 16px;
@@ -71,10 +73,6 @@
 }
 
 @media (max-width: 900px) {
-  .filters {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .filter-note {
     margin-left: 0;
   }

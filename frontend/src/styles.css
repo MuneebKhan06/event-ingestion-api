@@ -208,6 +208,11 @@ pre {
   font-size: 12px;
 }
 
+.pagination-note {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
 .grid {
   display: grid;
   gap: 16px;
