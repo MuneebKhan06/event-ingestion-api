@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { StoredEvent } from "../api/types";
+import { domainHue } from "../lib/format";
 import { useEventStream, type StreamState } from "../hooks/useEventStream";
 import { StatusBadge, type Tone } from "./StatusBadge";
 import "./LiveFeed.css";
@@ -10,17 +11,6 @@ const STATE_BADGE: Record<StreamState, { tone: Tone; label: string }> = {
   paused: { tone: "warn", label: "paused" },
   retrying: { tone: "bad", label: "reconnecting" },
 };
-
-// The domain half of "<domain>.<action>" picks the colour, so order, user,
-// quake and github events are easy to tell apart while they scroll past.
-const DOMAIN_HUES = [212, 145, 32, 280, 350, 180];
-
-function domainHue(eventType: string): number {
-  const domain = eventType.split(".")[0];
-  let hash = 0;
-  for (const char of domain) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return DOMAIN_HUES[hash % DOMAIN_HUES.length];
-}
 
 function EventRow({ event }: { event: StoredEvent }) {
   const [open, setOpen] = useState(false);
