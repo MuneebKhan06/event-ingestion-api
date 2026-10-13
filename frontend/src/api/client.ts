@@ -92,7 +92,9 @@ export const api = {
 
   getEvent: (eventId: string) => request<StoredEvent>(`/events/${encodeURIComponent(eventId)}`),
 
-  sendEvent: (event: EventCreate) =>
+  // Accepts any body, not only a valid EventCreate: the composer can turn its
+  // own checks off to let the server reject a malformed event itself.
+  sendEvent: (event: EventCreate | Record<string, unknown>) =>
     request<EventAccepted>("/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

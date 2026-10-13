@@ -6,7 +6,9 @@ import type { EventCreate } from "../api/types";
 export const MAX_FIELD_LENGTH = 50;
 export const MAX_PAYLOAD_BYTES = 32_768;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Pydantic's UUID parsing also takes the hyphenless form and a urn:uuid:
+// prefix, so the browser accepts those too rather than being stricter.
+const UUID = /^(urn:uuid:)?[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
 
 export interface Draft {
   event_id: string;
