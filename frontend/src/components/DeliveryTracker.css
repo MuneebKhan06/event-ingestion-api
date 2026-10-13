@@ -1,0 +1,85 @@
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  padding-bottom: 14px;
+}
+
+/* The connector between dots. */
+.timeline-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  background: var(--border);
+}
+
+.timeline-dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.step-done .timeline-dot {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.step-failed .timeline-dot {
+  border-color: var(--bad);
+  background: var(--bad);
+}
+
+.step-active .timeline-dot {
+  border-color: var(--accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.step-skipped {
+  opacity: 0.55;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 5px var(--accent-soft);
+  }
+}
+
+.timeline-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.timeline-title .muted {
+  font-size: 12px;
+}
+
+.timeline-detail {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+}
+
+.step-failed .timeline-detail {
+  color: var(--bad);
+}
+
+.timeline-link {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}

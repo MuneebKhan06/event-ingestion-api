@@ -39,10 +39,12 @@ that part is doing and why it was built that way.
 - Detail drawer for `GET /events/{event_id}` with formatted payload
 - Filters kept in the URL so a view can be shared
 
-### Day 3: Send event
-- Composer with presets (order, user activity, quake) and a JSON payload editor
+### Day 3: Send event (done)
+- Composer with presets (order, user activity, cart, payment) and a JSON payload editor
+- "Break one rule" presets that each trigger a single 422 from the server
 - Responses explained in place: 202 accepted, 409 duplicate, 422 validation, 503 unavailable
 - "Send again" button that reuses the `event_id` to show the duplicate path
+- Race demo: concurrent copies all get 202, the unique constraint keeps one row
 - Follow an accepted event until it appears in Postgres
 
 ### Day 4: Dead letter queue

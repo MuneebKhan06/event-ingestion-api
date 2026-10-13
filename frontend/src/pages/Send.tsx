@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import { Composer } from "../components/Composer";
+import { DeliveryTracker } from "../components/DeliveryTracker";
 import { DuplicateDemo } from "../components/DuplicateDemo";
 import { PresetBar } from "../components/PresetBar";
 import { ResponsePanel, type SendOutcome } from "../components/ResponsePanel";
@@ -111,6 +112,7 @@ export function Send() {
           </pre>
         </section>
         <ResponsePanel outcome={outcome} />
+        <DeliveryTracker outcome={outcome} />
         <DuplicateDemo draft={draft} onResend={send} canResend={valid && outcome !== null && !sending} />
       </div>
     </div>
