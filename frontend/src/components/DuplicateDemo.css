@@ -1,0 +1,68 @@
+.dup-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.dup-action {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  align-items: start;
+  gap: 12px;
+}
+
+.dup-action .btn {
+  width: 100%;
+}
+
+.dup-action p {
+  font-size: 12.5px;
+}
+
+.dup-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.dup-step {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dup-label {
+  color: var(--text-muted);
+}
+
+.dup-code {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.dup-202 {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.dup-409 {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.dup-note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.dup-id {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
