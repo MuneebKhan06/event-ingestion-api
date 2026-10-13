@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Composer } from "../components/Composer";
+import { PresetBar } from "../components/PresetBar";
 import { newEventId, toRequestBody, validateDraft, type Draft } from "../lib/validate";
 import "./Send.css";
 
@@ -9,6 +10,17 @@ const INITIAL: Draft = {
   source: "order-service",
   payloadText: JSON.stringify({ order_id: "ORD-001", user_id: "USR-123", amount: 99.99, currency: "USD" }, null, 2),
 };
+
+// Long enough to read any realistic event, short enough that the oversized
+// preset does not turn the preview into 32 KB of x.
+const PREVIEW_CHARS = 3000;
+
+function preview(body: unknown): string {
+  const text = JSON.stringify(body, null, 2);
+  return text.length > PREVIEW_CHARS
+    ? `${text.slice(0, PREVIEW_CHARS)}\n… ${(text.length - PREVIEW_CHARS).toLocaleString()} more characters`
+    : text;
+}
 
 export function Send() {
   const [draft, setDraft] = useState<Draft>(INITIAL);
@@ -22,6 +34,7 @@ export function Send() {
           <h2>Compose</h2>
           <span className="muted">Checked against the same rules as the API's Pydantic model</span>
         </div>
+        <PresetBar onPick={(next) => setDraft(next)} />
         <Composer draft={draft} errors={errors} onChange={setDraft} />
       </section>
 
@@ -35,7 +48,7 @@ export function Send() {
         <pre className="request-preview">
           <span className="request-line">POST /events</span>
           {"\n"}Content-Type: application/json{"\n\n"}
-          {JSON.stringify(toRequestBody(draft), null, 2)}
+          {preview(toRequestBody(draft))}
         </pre>
       </section>
     </div>
