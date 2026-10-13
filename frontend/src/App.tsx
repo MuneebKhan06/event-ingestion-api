@@ -2,6 +2,7 @@ import { PageHeader } from "./components/PageHeader";
 import { Sidebar } from "./components/Sidebar";
 import { Events } from "./pages/Events";
 import { Overview } from "./pages/Overview";
+import { Send } from "./pages/Send";
 import { Stream } from "./pages/Stream";
 import { useRoute, type Route } from "./router";
 
@@ -73,6 +74,8 @@ export function App() {
           <Stream />
         ) : route === "events" ? (
           <Events />
+        ) : route === "send" ? (
+          <Send />
         ) : (
           <div className="card empty">This screen is on the plan and arrives in a later step.</div>
         )}

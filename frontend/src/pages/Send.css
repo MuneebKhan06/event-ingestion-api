@@ -1,0 +1,36 @@
+.send-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.send-side {
+  display: grid;
+  gap: 16px;
+}
+
+.send-invalid {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.request-preview {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  overflow-x: auto;
+}
+
+.request-line {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .send-layout {
+    grid-template-columns: 1fr;
+  }
+}
