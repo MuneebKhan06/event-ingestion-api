@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# The root .gitignore ignores lib/ for Python build output. That rule also
+# matched this TypeScript source folder, so it is re-included here.
+!/src/lib/
