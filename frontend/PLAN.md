@@ -47,9 +47,12 @@ that part is doing and why it was built that way.
 - Race demo: concurrent copies all get 202, the unique constraint keeps one row
 - Follow an accepted event until it appears in Postgres
 
-### Day 4: Dead letter queue
+### Day 4: Dead letter queue (done)
+- `scripts/seed_dlq.sh` publishes one message per consumer failure path, so the DLQ has real data
+- Fixed a consumer crash loop the seed exposed: failed writes now roll back, and overlong fields fit the DLQ row
 - `GET /dlq` table with source and type filters
 - Error reason badges and raw payload viewer
+- Replay verdict per event, matching what `replay_dlq.py` would skip
 - Panel explaining the retry policy and the `scripts/replay_dlq.py` replay flow
 
 ### Day 5: Metrics

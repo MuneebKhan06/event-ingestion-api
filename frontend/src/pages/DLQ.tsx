@@ -5,6 +5,7 @@ import { DLQDrawer } from "../components/DLQDrawer";
 import { DLQTable } from "../components/DLQTable";
 import { PAGE_SIZES, Pagination } from "../components/Pagination";
 import { ReasonSummary } from "../components/ReasonSummary";
+import { ReplayGuide } from "../components/ReplayGuide";
 import { useHashParams } from "../router";
 import "./DLQ.css";
 
@@ -130,6 +131,7 @@ export function DLQ() {
           </>
         )}
       </section>
+      <ReplayGuide events={page?.events ?? []} eventType={eventType} source={source} />
       {selected && <DLQDrawer event={selected} onClose={closeDrawer} />}
     </div>
   );
