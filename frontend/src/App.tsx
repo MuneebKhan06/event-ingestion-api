@@ -1,5 +1,6 @@
 import { PageHeader } from "./components/PageHeader";
 import { Sidebar } from "./components/Sidebar";
+import { DLQ } from "./pages/DLQ";
 import { Events } from "./pages/Events";
 import { Overview } from "./pages/Overview";
 import { Send } from "./pages/Send";
@@ -76,6 +77,8 @@ export function App() {
           <Events />
         ) : route === "send" ? (
           <Send />
+        ) : route === "dlq" ? (
+          <DLQ />
         ) : (
           <div className="card empty">This screen is on the plan and arrives in a later step.</div>
         )}
