@@ -20,3 +20,8 @@
   outline: 2px solid var(--accent-soft);
   border-color: var(--accent);
 }
+
+.drawer-text {
+  margin: 8px 0 14px;
+  font-size: 12.5px;
+}

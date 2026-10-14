@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type ApiResult } from "../api/client";
 import type { DLQPage } from "../api/types";
+import { DLQDrawer } from "../components/DLQDrawer";
 import { DLQTable } from "../components/DLQTable";
 import { PAGE_SIZES, Pagination } from "../components/Pagination";
 import { ReasonSummary } from "../components/ReasonSummary";
@@ -47,6 +48,9 @@ export function DLQ() {
   }, [queryKey]);
 
   const page = result?.data;
+  const selectedId = Number(params.get("dlq"));
+  const selected = page?.events.find((event) => event.id === selectedId);
+  const closeDrawer = useCallback(() => setParams({ dlq: undefined }), [setParams]);
   const filtered = Boolean(eventType || source);
 
   return (
@@ -111,7 +115,7 @@ export function DLQ() {
           </div>
         ) : (
           <>
-            <DLQTable events={page.events} />
+            <DLQTable events={page.events} onSelect={(event) => setParams({ dlq: String(event.id) })} />
             <Pagination
               total={page.total}
               limit={limit}
@@ -126,6 +130,7 @@ export function DLQ() {
           </>
         )}
       </section>
+      {selected && <DLQDrawer event={selected} onClose={closeDrawer} />}
     </div>
   );
 }
