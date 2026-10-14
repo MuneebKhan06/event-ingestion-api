@@ -3,6 +3,7 @@ import { api, ApiError, type ApiResult } from "../api/client";
 import type { DLQPage } from "../api/types";
 import { DLQTable } from "../components/DLQTable";
 import { PAGE_SIZES, Pagination } from "../components/Pagination";
+import { ReasonSummary } from "../components/ReasonSummary";
 import { useHashParams } from "../router";
 import "./DLQ.css";
 
@@ -49,79 +50,82 @@ export function DLQ() {
   const filtered = Boolean(eventType || source);
 
   return (
-    <section className="card">
-      <form
-        className="dlq-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setParams({ event_type: draft.event_type.trim(), source: draft.source.trim(), offset: undefined });
-        }}
-      >
-        <input
-          placeholder="Event type, exact"
-          value={draft.event_type}
-          onChange={(e) => setDraft({ ...draft, event_type: e.target.value })}
-        />
-        <input
-          placeholder="Source, exact"
-          value={draft.source}
-          onChange={(e) => setDraft({ ...draft, source: e.target.value })}
-        />
-        <button type="submit" className="btn btn-primary">
-          Filter
-        </button>
-        {filtered && (
-          <button
-            type="button"
-            className="btn btn-quiet"
-            onClick={() => setParams({ event_type: undefined, source: undefined, offset: undefined })}
-          >
-            Reset
-          </button>
-        )}
-      </form>
-
-      <div className="card-head">
-        <h2>Failed events</h2>
-        {page && (
-          <span className="muted">
-            {page.total.toLocaleString()} {filtered ? "match" : "in the queue"}, newest first
-          </span>
-        )}
-        <span className="muted request-meta">refreshes every {REFRESH_MS / 1000} s</span>
-      </div>
-
-      {error ? (
-        <div className="empty">{error.message}</div>
-      ) : !page ? (
-        <div className="empty">Loading…</div>
-      ) : page.events.length === 0 ? (
-        <div className="empty">
-          {filtered ? (
-            "Nothing in the queue matches these filters."
-          ) : (
-            <>
-              The queue is empty: nothing has failed. To see it working, publish some malformed messages with{" "}
-              <code>./scripts/seed_dlq.sh</code>.
-            </>
-          )}
-        </div>
-      ) : (
-        <>
-          <DLQTable events={page.events} />
-          <Pagination
-            total={page.total}
-            limit={limit}
-            offset={offset}
-            onChange={(nextOffset, nextLimit) =>
-              setParams({
-                offset: nextOffset > 0 ? String(nextOffset) : undefined,
-                limit: nextLimit !== PAGE_SIZES[0] ? String(nextLimit) : undefined,
-              })
-            }
+    <div className="grid">
+      <ReasonSummary refreshKey={result?.data.total} />
+      <section className="card">
+        <form
+          className="dlq-filters"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setParams({ event_type: draft.event_type.trim(), source: draft.source.trim(), offset: undefined });
+          }}
+        >
+          <input
+            placeholder="Event type, exact"
+            value={draft.event_type}
+            onChange={(e) => setDraft({ ...draft, event_type: e.target.value })}
           />
-        </>
-      )}
-    </section>
+          <input
+            placeholder="Source, exact"
+            value={draft.source}
+            onChange={(e) => setDraft({ ...draft, source: e.target.value })}
+          />
+          <button type="submit" className="btn btn-primary">
+            Filter
+          </button>
+          {filtered && (
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setParams({ event_type: undefined, source: undefined, offset: undefined })}
+            >
+              Reset
+            </button>
+          )}
+        </form>
+
+        <div className="card-head">
+          <h2>Failed events</h2>
+          {page && (
+            <span className="muted">
+              {page.total.toLocaleString()} {filtered ? "match" : "in the queue"}, newest first
+            </span>
+          )}
+          <span className="muted request-meta">refreshes every {REFRESH_MS / 1000} s</span>
+        </div>
+
+        {error ? (
+          <div className="empty">{error.message}</div>
+        ) : !page ? (
+          <div className="empty">Loading…</div>
+        ) : page.events.length === 0 ? (
+          <div className="empty">
+            {filtered ? (
+              "Nothing in the queue matches these filters."
+            ) : (
+              <>
+                The queue is empty: nothing has failed. To see it working, publish some malformed messages with{" "}
+                <code>./scripts/seed_dlq.sh</code>.
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <DLQTable events={page.events} />
+            <Pagination
+              total={page.total}
+              limit={limit}
+              offset={offset}
+              onChange={(nextOffset, nextLimit) =>
+                setParams({
+                  offset: nextOffset > 0 ? String(nextOffset) : undefined,
+                  limit: nextLimit !== PAGE_SIZES[0] ? String(nextLimit) : undefined,
+                })
+              }
+            />
+          </>
+        )}
+      </section>
+    </div>
   );
 }

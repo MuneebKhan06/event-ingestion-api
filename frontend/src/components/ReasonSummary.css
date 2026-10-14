@@ -1,0 +1,57 @@
+.reason-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.reason-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reason-card p {
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.reason-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reason-count {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.reason-retry {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.reason-sample {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}
+
+.reason-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.reason-cell span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
