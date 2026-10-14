@@ -29,8 +29,20 @@ class EventRepository:
             .on_conflict_do_nothing(index_elements=["event_id"])
             .returning(Event.id)
         )
-        result = await self._session.execute(stmt)
-        await self._session.commit()
+        try:
+            result = await self._session.execute(stmt)
+            await self._session.commit()
+        except Exception:
+            # A failed statement leaves the transaction aborted, and Postgres
+            # refuses everything else on it until a rollback. Without this the
+            # consumer's retries all fail with InFailedSQLTransactionError
+            # instead of the real error, and the DLQ write that follows reuses
+            # the same session and fails too. The exception then escapes the
+            # consume loop, the offset is never committed, and the message is
+            # redelivered forever, so one row Postgres rejects (a value too
+            # long for its column, say) halts ingestion for everything.
+            await self._session.rollback()
+            raise
         inserted = result.first() is not None
         if inserted:
             logger.info("Inserted event %s (type=%s, source=%s)", event_id, event_type, source)
@@ -103,7 +115,12 @@ class EventRepository:
             error_reason=error_reason,
         )
         self._session.add(dlq_event)
-        await self._session.commit()
+        try:
+            await self._session.commit()
+        except Exception:
+            # Same reason as insert_event: leave the session usable.
+            await self._session.rollback()
+            raise
         logger.info(
             "Routed event %s to DLQ (type=%s, source=%s, reason=%s)",
             event_id,

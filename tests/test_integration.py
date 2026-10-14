@@ -188,6 +188,43 @@ async def test_duplicate_insert_is_ignored_by_the_real_unique_constraint(db_sess
     assert stored.payload == {"n": 1}
 
 
+async def test_session_stays_usable_after_postgres_rejects_an_insert(db_session):
+    """A rejected row must not poison the session for what follows.
+
+    The consumer handles one message on one session: the insert, its retries,
+    and the DLQ write if they are exhausted. event_type is VARCHAR(50), so a
+    longer one is refused by Postgres itself. Before the repository rolled back
+    on failure, every later statement on the session failed with
+    InFailedSQLTransactionError, the DLQ write included, and the consumer
+    crash looped on that message. Found by publishing such a message straight
+    to Kafka with scripts/seed_dlq.sh.
+    """
+    from sqlalchemy.exc import DBAPIError
+
+    from app.db.models import DLQEvent
+    from app.db.repository import EventRepository
+
+    repository = EventRepository(db_session)
+    too_long = "inventory." + "x" * 60
+
+    with pytest.raises(DBAPIError, match="too long"):
+        await repository.insert_event(
+            event_id=uuid.uuid4(), event_type=too_long, source="integration-test", payload={}
+        )
+
+    # A retry sees the real error again, not an aborted transaction.
+    with pytest.raises(DBAPIError, match="too long"):
+        await repository.insert_event(
+            event_id=uuid.uuid4(), event_type=too_long, source="integration-test", payload={}
+        )
+
+    # And the DLQ write that follows succeeds on the same session.
+    reason = f"session-reuse-{uuid.uuid4()}"
+    await repository.insert_dlq_event(raw_payload={"event_type": too_long}, error_reason=reason)
+    rows, _ = await repository.list_dlq_events(limit=200, newest_first=True)
+    assert any(isinstance(row, DLQEvent) and row.error_reason == reason for row in rows)
+
+
 async def test_list_events_filters_against_real_sql(db_session):
     """The listing query is only ever exercised as compiled SQL elsewhere."""
     from app.db.repository import EventRepository

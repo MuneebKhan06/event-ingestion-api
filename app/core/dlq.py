@@ -8,6 +8,23 @@ from app.kafka.topics import EVENTS_DLQ
 
 logger = logging.getLogger(__name__)
 
+# Width of dlq_events.event_type and dlq_events.source (VARCHAR(50)).
+_COLUMN_WIDTH = 50
+
+
+def _fit_column(value: str | None) -> str | None:
+    """Trim a value to fit its DLQ column.
+
+    The DLQ has to accept whatever failed, and "a field too long for its
+    column" is itself one way to fail. Recording such an event with the value
+    as is would be refused for the same reason the event was, leaving the
+    failure with nowhere to go. These columns only index the row for filtering;
+    raw_payload keeps the original untouched, so nothing is lost by trimming.
+    """
+    if value is None or len(value) <= _COLUMN_WIDTH:
+        return value
+    return value[:_COLUMN_WIDTH]
+
 
 class DLQHandler:
     """Records a failed event both for durable inspection (Postgres) and for
@@ -30,8 +47,8 @@ class DLQHandler:
             raw_payload=raw_payload,
             error_reason=error_reason,
             event_id=event_id,
-            event_type=event_type,
-            source=source,
+            event_type=_fit_column(event_type),
+            source=_fit_column(source),
         )
         dlq_message = {
             "event_id": str(event_id) if event_id else None,

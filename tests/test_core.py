@@ -95,6 +95,28 @@ async def test_dlq_send_falls_back_to_generated_key_when_event_id_unknown(
     assert message["event_id"] is None
 
 
+async def test_dlq_send_trims_overlong_fields_to_fit_their_columns(producer, repository):
+    """An event that failed for being too long must still be recordable.
+
+    event_type and source are VARCHAR(50) in dlq_events, the same width that
+    rejected the event in the first place, so the values are trimmed for the
+    row. The Kafka message and raw_payload keep the originals.
+    """
+    handler = DLQHandler(producer, repository)
+    long_type = "inventory.warehouse_stock_level_recalculated_after_audit"
+    raw = {"event_type": long_type}
+
+    await handler.send(raw_payload=raw, error_reason="too long", event_type=long_type, source="s")
+
+    stored = repository.insert_dlq_event.await_args.kwargs
+    assert stored["event_type"] == long_type[:50]
+    assert stored["raw_payload"] == raw
+    assert stored["source"] == "s"
+
+    published = producer.send_event.await_args.args[2]
+    assert published["event_type"] == long_type
+
+
 async def test_dlq_send_records_durably_before_publishing(producer, repository):
     """Postgres write comes first, so a Kafka failure still leaves a record."""
     manager = Mock()
