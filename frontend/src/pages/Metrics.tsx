@@ -1,9 +1,11 @@
+import { Sparkline } from "../components/Sparkline";
 import { StatTile } from "../components/StatTile";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   latest,
   PROCESSES,
   SCRAPE_MS,
+  sumIncrements,
   sumLatest,
   sumRatePerMinute,
   useMetrics,
@@ -47,6 +49,13 @@ export function Metrics() {
                   ratePerMinute={sumRatePerMinute(process, counter.name)}
                   help={process.help[counter.name]}
                   bad={counter.bad}
+                  trend={
+                    <Sparkline
+                      values={sumIncrements(process, counter.name)}
+                      intervalSeconds={SCRAPE_MS / 1000}
+                      label={counter.label}
+                    />
+                  }
                 />
               ))}
             </div>
