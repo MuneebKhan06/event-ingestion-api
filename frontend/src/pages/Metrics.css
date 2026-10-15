@@ -1,0 +1,35 @@
+.metrics-processes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+.metrics-error {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 12.5px;
+}
+
+.metrics-raw {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.metrics-raw td {
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.metrics-raw .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics-foot {
+  font-size: 12px;
+}
