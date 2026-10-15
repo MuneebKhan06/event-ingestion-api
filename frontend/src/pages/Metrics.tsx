@@ -1,3 +1,4 @@
+import { DLQBreakdown, SourceBreakdown } from "../components/Breakdowns";
 import { Sparkline } from "../components/Sparkline";
 import { StatTile } from "../components/StatTile";
 import { StatusBadge } from "../components/StatusBadge";
@@ -80,6 +81,8 @@ export function Metrics() {
           </section>
         );
       })}
+      <SourceBreakdown ingest={metrics.ingest} />
+      <DLQBreakdown consumer={metrics.consumer} />
       <p className="muted metrics-foot">
         Totals count since each process last started; rates cover up to the last two minutes, from when this page started scraping. Scraped every{" "}
         {SCRAPE_MS / 1000} s while this tab is visible. Hover a tile for the counter's own description.

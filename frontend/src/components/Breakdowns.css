@@ -1,0 +1,44 @@
+.breakdown-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown-table td.zero {
+  color: var(--text-muted);
+}
+
+.breakdown-sub {
+  display: block;
+  font-size: 11.5px;
+}
+
+.breakdown-note {
+  margin-top: 12px;
+  font-size: 12.5px;
+}
+
+.breakdown-reasons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.breakdown-reason {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.breakdown-count {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.breakdown-reason code {
+  font-size: 11.5px;
+}

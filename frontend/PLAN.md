@@ -55,7 +55,7 @@ that part is doing and why it was built that way.
 - Replay verdict per event, matching what `replay_dlq.py` would skip
 - Panel explaining the retry policy and the `scripts/replay_dlq.py` replay flow
 
-### Day 5: Metrics
+### Day 5: Metrics (done)
 - Small Prometheus text parser
 - Counters from API (`/metrics`), consumer (`:9100`) and ingest (`:9200`)
 - Rates computed from successive scrapes, sparklines per counter
