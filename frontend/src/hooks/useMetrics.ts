@@ -113,11 +113,45 @@ export function useMetrics(): MetricsState {
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") scrape();
     }, SCRAPE_MS);
+    // Scraping pauses in a background tab, so catch up the moment it is shown
+    // again instead of displaying stale numbers until the next tick.
+    const onVisible = () => document.visibilityState === "visible" && scrape();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
   return state;
+}
+
+/** Every series key for a metric name: the bare name, or name{labels...}. */
+export function keysFor(metrics: ProcessMetrics, name: string): string[] {
+  const last = metrics.history[metrics.history.length - 1];
+  if (!last) return [];
+  return Object.keys(last.values).filter((key) => key === name || key.startsWith(`${name}{`));
+}
+
+/** Latest total of a metric, summed across its labels. */
+export function sumLatest(metrics: ProcessMetrics, name: string): number | undefined {
+  const keys = keysFor(metrics, name);
+  if (keys.length === 0) return undefined;
+  return keys.reduce((sum, key) => sum + (latest(metrics, key) ?? 0), 0);
+}
+
+// Summed per series rather than summing totals first, so a restart is
+// detected on each series where it actually happened.
+export function sumRatePerMinute(metrics: ProcessMetrics, name: string): number | null {
+  const keys = keysFor(metrics, name);
+  if (keys.length === 0) return null;
+  const rates = keys.map((key) => ratePerMinute(metrics.history, key));
+  return rates.some((rate) => rate === null) ? null : rates.reduce((a, b) => a! + b!, 0);
+}
+
+export function sumIncrements(metrics: ProcessMetrics, name: string): number[] {
+  const keys = keysFor(metrics, name);
+  const series = keys.map((key) => increments(metrics.history, key));
+  return series[0]?.map((_, i) => series.reduce((sum, s) => sum + s[i], 0)) ?? [];
 }

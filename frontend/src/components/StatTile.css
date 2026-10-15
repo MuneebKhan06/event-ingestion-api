@@ -1,0 +1,43 @@
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.stat-rate {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Status color only when a "bad" counter is actually moving, and always with
+   the ▲ marker beside it, so the state never rests on color alone. */
+.stat-alarm {
+  border-color: var(--warn);
+}
+
+.stat-alarm .stat-rate {
+  color: var(--warn);
+  font-weight: 600;
+}

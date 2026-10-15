@@ -1,10 +1,3 @@
-.metrics-processes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  align-items: start;
-  gap: 16px;
-}
-
 .metrics-error {
   margin: 0 0 12px;
   padding: 8px 10px;
@@ -32,4 +25,23 @@
 
 .metrics-foot {
   font-size: 12px;
+}
+
+.metrics-note {
+  margin-top: 12px;
+  font-size: 12.5px;
+}
+
+.metrics-details {
+  margin-top: 10px;
+}
+
+.metrics-details summary {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.metrics-details .metrics-raw {
+  margin-top: 6px;
 }
