@@ -42,6 +42,14 @@
   stroke-width: 4px;
 }
 
+.pipeline-edge-total {
+  fill: var(--text-muted);
+  font-size: 10.5px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
 .pipeline-node {
   cursor: pointer;
   outline: none;

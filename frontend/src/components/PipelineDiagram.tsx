@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { EDGES, NODE_H, NODE_W, STAGES, VIEW_H, VIEW_W, type EdgeId, type StageId } from "../lib/pipeline";
 import "./PipelineDiagram.css";
 
@@ -7,8 +6,8 @@ interface Props {
   // Stages to emphasise, e.g. the one a tour step is about.
   highlight?: StageId[];
   onSelect?: (stage: StageId) => void;
-  // Optional content under each edge label, e.g. a live rate.
-  edgeExtras?: Partial<Record<EdgeId, ReactNode>>;
+  // Optional lines under each edge label, e.g. a live rate and total.
+  edgeExtras?: Partial<Record<EdgeId, string[]>>;
 }
 
 /**
@@ -41,11 +40,17 @@ export function PipelineDiagram({ selected, highlight = [], onSelect, edgeExtras
             <text x={edge.labelAt[0]} y={edge.labelAt[1]} textAnchor="middle" className="pipeline-edge-label">
               {edge.label}
             </text>
-            {edgeExtras[edge.id] && (
-              <text x={edge.labelAt[0]} y={edge.labelAt[1] + 14} textAnchor="middle" className="pipeline-edge-extra">
-                {edgeExtras[edge.id]}
+            {edgeExtras[edge.id]?.map((line, i) => (
+              <text
+                key={i}
+                x={edge.labelAt[0]}
+                y={edge.labelAt[1] + 14 + i * 13}
+                textAnchor="middle"
+                className={i === 0 ? "pipeline-edge-extra" : "pipeline-edge-total"}
+              >
+                {line}
               </text>
-            )}
+            ))}
           </g>
         );
       })}
