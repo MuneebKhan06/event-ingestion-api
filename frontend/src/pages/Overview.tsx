@@ -29,6 +29,13 @@ const STEPS = [
 export function Overview() {
   return (
     <div className="grid">
+      <a className="card tour-invite" href={`${href("how")}?tour=1`}>
+        <span>
+          <strong>New here?</strong> Take the guided tour: six steps, each a real request against the running stack,
+          from sending an event to watching duplicates and failures handled.
+        </span>
+        <span className="tour-invite-cta">Start the tour →</span>
+      </a>
       <section className="steps">
         {STEPS.map((step, index) => (
           <article key={step.title} className="card step">

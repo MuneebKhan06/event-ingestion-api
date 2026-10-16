@@ -61,10 +61,12 @@ that part is doing and why it was built that way.
 - Rates computed from successive scrapes, sparklines per counter
 - Per source breakdown for the ingest poller
 
-### Day 6: How it works
+### Day 6: How it works (done)
 - Pipeline diagram (API, Kafka, consumer, Postgres, DLQ) with live counts on each edge
-- Guided demo mode that walks a viewer through sending, duplicating and failing an event
-- Short explanations of the design decisions from the README next to each stage
+- Click a stage for what it does, facts from the code, and links to its screen
+- The six README design decisions as cards, linked both ways with the stages
+- Guided tour: six steps, each a real request (send, store, duplicate, race, 422, DLQ)
+- Tour and selected stage kept in the URL; the Overview invites first time viewers in
 
 ### Day 7: Ship
 - Docker image (nginx serving the build and proxying the backends) and a compose service

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useHashParams } from "../router";
 import { DecisionList } from "../components/DecisionList";
 import { GuidedTour } from "../components/GuidedTour";
 import { PipelineDiagram } from "../components/PipelineDiagram";
@@ -6,15 +7,23 @@ import { StageDetails } from "../components/StageDetails";
 import { StatusBadge } from "../components/StatusBadge";
 import { SCRAPE_MS, useMetrics } from "../hooks/useMetrics";
 import { edgeCounts, formatEdge } from "../lib/edgeMetrics";
-import type { EdgeId, StageId } from "../lib/pipeline";
+import { STAGES, type EdgeId, type StageId } from "../lib/pipeline";
 import { TOUR } from "../lib/tour";
 import "./HowItWorks.css";
 
 export function HowItWorks() {
-  const [selected, setSelected] = useState<StageId | null>(null);
+  // The selected stage and the tour step live in the URL, so a link such as
+  // #/how?tour=1 opens straight into the tour, and a reload keeps your place.
+  const [params, setParams] = useHashParams();
+  const stageParam = params.get("stage");
+  const selected = STAGES.some((s) => s.id === stageParam) ? (stageParam as StageId) : null;
+  const setSelected = (stage: StageId | null) => setParams({ stage: stage ?? undefined });
+  const tourParam = Number(params.get("tour"));
+  // null when the tour is not running. Steps are 1 based in the URL.
+  const tourStep = tourParam >= 1 && tourParam <= TOUR.length ? tourParam - 1 : null;
+  const setTourStep = (step: number | null) => setParams({ tour: step === null ? undefined : String(step + 1) });
+
   const [focusedDecision, setFocusedDecision] = useState<number | null>(null);
-  // null when the tour is not running.
-  const [tourStep, setTourStep] = useState<number | null>(null);
   const diagramRef = useRef<HTMLElement>(null);
 
   // Stages and decisions link both ways, so a viewer can start from either

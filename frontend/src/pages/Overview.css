@@ -37,3 +37,24 @@
   font-size: 12px;
   font-weight: 700;
 }
+
+.tour-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.tour-invite:hover {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tour-invite-cta {
+  color: var(--accent);
+  font-weight: 650;
+  white-space: nowrap;
+}
