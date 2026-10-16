@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PipelineDiagram } from "../components/PipelineDiagram";
+import { StageDetails } from "../components/StageDetails";
 import { StatusBadge } from "../components/StatusBadge";
 import { SCRAPE_MS, useMetrics } from "../hooks/useMetrics";
 import { edgeCounts, formatEdge } from "../lib/edgeMetrics";
@@ -39,6 +40,8 @@ export function HowItWorks() {
           since that process started.
         </p>
       </section>
+
+      <StageDetails stage={selected} />
     </div>
   );
 }

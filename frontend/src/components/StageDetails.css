@@ -1,0 +1,33 @@
+.stage-empty p {
+  text-align: center;
+  padding: 10px 0;
+}
+
+.stage-does {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.stage-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.stage-facts li::marker {
+  color: var(--accent);
+}
+
+.stage-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.stage-screen {
+  font-size: 13px;
+  font-weight: 600;
+}
