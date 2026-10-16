@@ -11,3 +11,9 @@
   margin-top: 10px;
   font-size: 12.5px;
 }
+
+.tour-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}

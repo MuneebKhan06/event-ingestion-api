@@ -1,16 +1,20 @@
 import { useRef, useState } from "react";
 import { DecisionList } from "../components/DecisionList";
+import { GuidedTour } from "../components/GuidedTour";
 import { PipelineDiagram } from "../components/PipelineDiagram";
 import { StageDetails } from "../components/StageDetails";
 import { StatusBadge } from "../components/StatusBadge";
 import { SCRAPE_MS, useMetrics } from "../hooks/useMetrics";
 import { edgeCounts, formatEdge } from "../lib/edgeMetrics";
 import type { EdgeId, StageId } from "../lib/pipeline";
+import { TOUR } from "../lib/tour";
 import "./HowItWorks.css";
 
 export function HowItWorks() {
   const [selected, setSelected] = useState<StageId | null>(null);
   const [focusedDecision, setFocusedDecision] = useState<number | null>(null);
+  // null when the tour is not running.
+  const [tourStep, setTourStep] = useState<number | null>(null);
   const diagramRef = useRef<HTMLElement>(null);
 
   // Stages and decisions link both ways, so a viewer can start from either
@@ -36,13 +40,19 @@ export function HowItWorks() {
         <div className="card-head">
           <h2>The pipeline</h2>
           <span className="muted">Click a stage to see what it does and why it was built that way</span>
-          <span className="request-meta">
+          <span className="request-meta tour-start">
             <StatusBadge tone={live ? "ok" : "idle"}>{live ? "live counts" : "waiting for metrics"}</StatusBadge>
+            {tourStep === null && (
+              <button className="btn btn-primary" onClick={() => setTourStep(0)}>
+                Start guided tour
+              </button>
+            )}
           </span>
         </div>
         <div className="pipeline-wrap">
           <PipelineDiagram
             selected={selected}
+            highlight={tourStep === null ? [] : TOUR[tourStep].stages}
             onSelect={(id) => setSelected(id === selected ? null : id)}
             edgeExtras={extras}
           />
@@ -54,6 +64,8 @@ export function HowItWorks() {
           since that process started.
         </p>
       </section>
+
+      {tourStep !== null && <GuidedTour step={tourStep} onStep={setTourStep} onClose={() => setTourStep(null)} />}
 
       <StageDetails stage={selected} onDecision={showDecision} />
 
