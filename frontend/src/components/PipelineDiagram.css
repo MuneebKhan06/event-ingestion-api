@@ -1,0 +1,87 @@
+.pipeline {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--sans);
+}
+
+.pipeline-edge path {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.6;
+}
+
+.pipeline-edge-fail path {
+  stroke: var(--warn);
+  stroke-dasharray: 5 4;
+}
+
+.pipeline-arrowhead {
+  fill: var(--text-muted);
+}
+
+.pipeline-arrowhead-fail {
+  fill: var(--warn);
+}
+
+.pipeline-edge-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  /* A halo in the surface colour keeps labels legible where they sit on a line. */
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
+.pipeline-edge-extra {
+  fill: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
+.pipeline-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.pipeline-node rect {
+  fill: var(--surface-muted);
+  stroke: var(--border);
+  stroke-width: 1.5;
+  transition: stroke 0.15s, fill 0.15s;
+}
+
+.pipeline-node-dlq rect {
+  stroke: var(--warn);
+  stroke-dasharray: 5 4;
+}
+
+.pipeline-node:hover rect,
+.pipeline-node:focus-visible rect {
+  stroke: var(--accent);
+}
+
+.pipeline-node.highlight rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.pipeline-node.selected rect {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.pipeline-node-title {
+  fill: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.pipeline-node-sub {
+  fill: var(--text-muted);
+  font-size: 11px;
+}

@@ -2,6 +2,7 @@ import { PageHeader } from "./components/PageHeader";
 import { Sidebar } from "./components/Sidebar";
 import { DLQ } from "./pages/DLQ";
 import { Events } from "./pages/Events";
+import { HowItWorks } from "./pages/HowItWorks";
 import { Metrics } from "./pages/Metrics";
 import { Overview } from "./pages/Overview";
 import { Send } from "./pages/Send";
@@ -82,6 +83,8 @@ export function App() {
           <DLQ />
         ) : route === "metrics" ? (
           <Metrics />
+        ) : route === "how" ? (
+          <HowItWorks />
         ) : (
           <div className="card empty">This screen is on the plan and arrives in a later step.</div>
         )}

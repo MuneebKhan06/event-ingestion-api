@@ -1,0 +1,13 @@
+.pipeline-wrap {
+  overflow-x: auto;
+}
+
+/* Below this the labels get too small to read, so the diagram scrolls instead. */
+.pipeline-wrap .pipeline {
+  min-width: 640px;
+}
+
+.pipeline-caption {
+  margin-top: 10px;
+  font-size: 12.5px;
+}
